@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>德州撲克籌碼追蹤器</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+    .player-container { display: flex; flex-wrap: wrap; gap: 10px; }
+    .player { flex: 1 1 300px; box-sizing: border-box; border: 1px solid #ccc; padding: 10px; background: #fff; border-radius: 8px; }
+    .controls { margin-bottom: 20px; }
+    input[type="number"], input[type="text"] { width: 150px; }
+    .summary { font-weight: bold; margin-top: 20px; }
+    .round-summary { margin-top: 20px; border-top: 2px solid #ccc; padding-top: 10px; }
+    .round-summary table { width: 100%; border-collapse: collapse; }
+    .round-summary th, .round-summary td { padding: 10px; text-align: center; border: 1px solid #ccc; }
+    .reset-button { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>德州撲克 籌碼與盈虧計算</h1>
+
+  <div class="controls">
+    <button onclick="addPlayer()">新增玩家</button>
+    <button onclick="removePlayer()">移除玩家</button>
+    <button onclick="saveRound()">儲存回合</button>
+  </div>
+
+  <div id="players" class="player-container"></div>
+
+  <div class="summary">
+    <p>總買入籌碼：<span id="totalBuyIn">0</span> | 總剩餘籌碼：<span id="totalRemaining">0</span></p>
+  </div>
+
+  <div class="round-summary">
+    <h3>回合盈虧紀錄</h3>
+    <table id="roundsTable">
+      <thead>
+        <tr>
+          <th>玩家名稱</th>
+          <th>回合盈虧</th>
+          <th>總盈虧</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- 重置全部按鈕放在底部 -->
+  <div class="reset-button">
+    <button onclick="resetAll()">重置全部</button>
+  </div>
+
+  <script>
+    let players = [];
+    let rounds = [];
+
+    // 新增玩家
+    function addPlayer() {
+      const player = {
+        name: '',
+        buyIn: 20000,
+        tokens: 1,
+        remainingInput: '',
+        remaining: 0,
+        profit: 0,  // 盈虧初始化
+        roundProfits: []  // 儲存每回合的盈虧
+      };
+      players.push(player);
+      render();
+    }
+
+    // 移除玩家
+    function removePlayer() {
+      players.pop();
+      render();
+    }
+
+    // 更新買入籌碼
+    function buyIn(index) {
+      players[index].buyIn += 20000;
+      players[index].tokens += 1;
+      updateProfit(index);
+      render();
+    }
+
+    // 減少買入籌碼
+    function decreaseBuyIn(index) {
+      if (players[index].buyIn >= 20000 && players[index].tokens > 0) {
+        players[index].buyIn -= 20000;
+        players[index].tokens -= 1;
+        updateProfit(index);
+        render();
+      }
+    }
+
+    // 更新剩餘籌碼
+    function updateRemaining(index, value) {
+      players[index].remainingInput = value;
+      const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
+      players[index].remaining = numericValue;
+      updateProfit(index);
+    }
+
+    // 計算盈虧（手動輸入剩餘籌碼 - 買入籌碼）/ 100
+    function updateProfit(index) {
+      const remaining = players[index].remaining;
+      const buyIn = players[index].buyIn;
+      // 盈虧公式
+      players[index].profit = (remaining - buyIn) / 100;
+      updateSummary();
+      const profitElement = document.getElementById(`profit-${index}`);
+      if (profitElement) {
+        profitElement.textContent = formatProfit(players[index].profit);  // 顯示盈虧格式
+      }
+    }
+
+    // 格式化盈虧顯示
+    function formatProfit(profit) {
+      if (profit === 0) {
+        return '+0';  // 盈虧為0顯示+0
+      }
+      return profit > 0 ? `+${Math.round(profit)}` : `${Math.round(profit)}`;
+    }
+
+    // 更新玩家名稱
+    function updateName(index, value) {
+      players[index].name = value;
+    }
+
+    // 儲存回合盈虧
+    function saveRound() {
+      const roundData = players.map(player => {
+        const roundProfit = player.profit;
+        player.roundProfits.push(roundProfit);  // 記錄每個回合的盈虧
+        return {
+          name: player.name,
+          roundProfits: player.roundProfits,
+          totalProfit: player.roundProfits.reduce((acc, profit) => acc + profit, 0)  // 計算總盈虧
+        };
+      });
+
+      rounds.push(roundData);
+      resetCurrentRound();
+      renderRoundSummary();
+    }
+
+    // 重置當前回合的資料
+    function resetCurrentRound() {
+      players.forEach(player => {
+        player.buyIn = 20000;
+        player.tokens = 1;
+        player.remainingInput = '';
+        player.remaining = 0;
+        player.profit = 0;
+      });
+      render();
+    }
+
+    // 重置全部資料
+    function resetAll() {
+      players = [];  // 清空玩家資料
+      rounds = [];   // 清空回合資料
+      addPlayer();   // 新增一個空白玩家
+      render();
+      renderRoundSummary();
+      updateSummary();
+    }
+
+    // 渲染玩家資料
+    function render() {
+      const container = document.getElementById('players');
+      container.innerHTML = '';
+
+      players.forEach((player, index) => {
+        const div = document.createElement('div');
+        div.className = 'player';
+
+        const inputId = `input-${index}`;
+        const profitId = `profit-${index}`;
+
+        div.innerHTML = `
+          <p>
+            <label>玩家名稱：</label>
+            <input type="text" value="${player.name}" oninput="updateName(${index}, this.value)" placeholder="請輸入玩家名稱" />
+          </p>
+          <p>買入籌碼：${player.buyIn}</p>
+          <p>代幣數量：${player.tokens}</p>
+          <button onclick="buyIn(${index})">買入 (20000籌碼 + 1代幣)</button>
+          <button onclick="decreaseBuyIn(${index})">減少 (20000籌碼 - 1代幣)</button><br><br>
+          <label>手動輸入剩餘籌碼：</label>
+          <input id="${inputId}" type="text" value="${player.remainingInput}" oninput="updateRemaining(${index}, this.value)" />
+          <p>盈虧：<span id="${profitId}">${formatProfit(player.profit)}</span></p>
+        `;
+
+        container.appendChild(div);
+      });
+    }
+
+    // 渲染回合盈虧紀錄
+    function renderRoundSummary() {
+      const tableBody = document.getElementById('roundsTable').getElementsByTagName('tbody')[0];
+      tableBody.innerHTML = '';
+
+      players.forEach(player => {
+        const roundProfits = player.roundProfits.map(profit => {
+          const formattedProfit = formatProfit(profit);
+          return formattedProfit;
+        }).join('');
+        const totalProfit = Math.round(player.roundProfits.reduce((acc, profit) => acc + profit, 0));  // 計算總盈虧
+        const row = tableBody.insertRow();
+        row.innerHTML = `
+          <td>${player.name}</td>
+          <td>${roundProfits}</td>
+          <td>${totalProfit}</td>
+        `;
+      });
+    }
+
+    // 更新總買入籌碼與總剩餘籌碼
+    function updateSummary() {
+      let totalBuyIn = 0;
+      let totalRemaining = 0;
+
+      players.forEach(player => {
+        totalBuyIn += player.buyIn;
+        totalRemaining += player.remaining;
+      });
+
+      document.getElementById('totalBuyIn').textContent = totalBuyIn;
+      document.getElementById('totalRemaining').textContent = totalRemaining;
+    }
+
+    // 初始化一個玩家
+    addPlayer();
+  </script>
+</body>
+</html>
