@@ -43,6 +43,7 @@
   <div class="controls">
     <button onclick="addPlayer()">新增玩家</button>
     <button onclick="saveRound()">儲存回合</button>
+    <button onclick="clearStorage()">清除儲存資料</button>
   </div>
 
   <div id="players" class="player-container"></div>
@@ -85,11 +86,13 @@
       };
       players.push(player);
       render();
+      saveToStorage();
     }
 
     function removePlayer(index) {
       players.splice(index, 1);
       render();
+      saveToStorage();
     }
 
     function buyIn(index) {
@@ -97,6 +100,7 @@
       players[index].tokens += 1;
       updateProfit(index);
       render();
+      saveToStorage();
     }
 
     function decreaseBuyIn(index) {
@@ -105,6 +109,7 @@
         players[index].tokens -= 1;
         updateProfit(index);
         render();
+        saveToStorage();
       }
     }
 
@@ -113,6 +118,7 @@
       const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
       players[index].remaining = numericValue;
       updateProfit(index);
+      saveToStorage();
     }
 
     function updateProfit(index) {
@@ -133,6 +139,7 @@
 
     function updateName(index, value) {
       players[index].name = value;
+      saveToStorage();
     }
 
     function saveRound() {
@@ -149,6 +156,7 @@
       rounds.push(roundData);
       resetCurrentRound();
       renderRoundSummary();
+      saveToStorage();
     }
 
     function resetCurrentRound() {
@@ -169,6 +177,12 @@
       render();
       renderRoundSummary();
       updateSummary();
+      saveToStorage();
+    }
+
+    function clearStorage() {
+      localStorage.removeItem('pokerData');
+      resetAll();
     }
 
     function render() {
@@ -230,7 +244,22 @@
       document.getElementById('totalRemaining').textContent = totalRemaining;
     }
 
-    addPlayer();
+    function saveToStorage() {
+      localStorage.setItem('pokerData', JSON.stringify({ players, rounds }));
+    }
+
+    // 初始化資料
+    const saved = localStorage.getItem('pokerData');
+    if (saved) {
+      const data = JSON.parse(saved);
+      players = data.players || [];
+      rounds = data.rounds || [];
+      render();
+      renderRoundSummary();
+      updateSummary();
+    } else {
+      addPlayer();
+    }
   </script>
 </body>
 </html>
