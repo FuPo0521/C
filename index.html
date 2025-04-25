@@ -7,14 +7,14 @@
   <style>
     body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
     .player-container { display: flex; flex-wrap: wrap; gap: 10px; }
-    .player { 
+    .player {
       position: relative;
-      flex: 1 1 300px; 
-      box-sizing: border-box; 
-      border: 1px solid #ccc; 
-      padding: 10px; 
-      background: #fff; 
-      border-radius: 8px; 
+      flex: 1 1 300px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background: #fff;
+      border-radius: 8px;
     }
     .remove-button {
       position: absolute;
@@ -43,7 +43,6 @@
   <div class="controls">
     <button onclick="addPlayer()">新增玩家</button>
     <button onclick="saveRound()">儲存回合</button>
-    <button onclick="clearStorage()">清除儲存資料</button>
   </div>
 
   <div id="players" class="player-container"></div>
@@ -67,12 +66,12 @@
   </div>
 
   <div class="reset-button">
-    <button onclick="resetAll()">重置全部</button>
+    <button onclick="clearStorage()">清除儲存資料</button>
   </div>
 
   <script>
-    let players = [];
-    let rounds = [];
+    let players = JSON.parse(localStorage.getItem('players')) || [];
+    let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
 
     function addPlayer() {
       const player = {
@@ -85,22 +84,22 @@
         roundProfits: []
       };
       players.push(player);
-      render();
       saveToStorage();
+      render();
     }
 
     function removePlayer(index) {
       players.splice(index, 1);
-      render();
       saveToStorage();
+      render();
     }
 
     function buyIn(index) {
       players[index].buyIn += 20000;
       players[index].tokens += 1;
       updateProfit(index);
-      render();
       saveToStorage();
+      render();
     }
 
     function decreaseBuyIn(index) {
@@ -108,8 +107,8 @@
         players[index].buyIn -= 20000;
         players[index].tokens -= 1;
         updateProfit(index);
-        render();
         saveToStorage();
+        render();
       }
     }
 
@@ -154,9 +153,9 @@
       });
 
       rounds.push(roundData);
+      saveToStorage();
       resetCurrentRound();
       renderRoundSummary();
-      saveToStorage();
     }
 
     function resetCurrentRound() {
@@ -167,22 +166,18 @@
         player.remaining = 0;
         player.profit = 0;
       });
+      saveToStorage();
       render();
     }
 
-    function resetAll() {
+    function clearStorage() {
+      localStorage.clear();
       players = [];
       rounds = [];
       addPlayer();
       render();
       renderRoundSummary();
       updateSummary();
-      saveToStorage();
-    }
-
-    function clearStorage() {
-      localStorage.removeItem('pokerData');
-      resetAll();
     }
 
     function render() {
@@ -245,21 +240,14 @@
     }
 
     function saveToStorage() {
-      localStorage.setItem('pokerData', JSON.stringify({ players, rounds }));
+      localStorage.setItem('players', JSON.stringify(players));
+      localStorage.setItem('rounds', JSON.stringify(rounds));
     }
 
-    // 初始化資料
-    const saved = localStorage.getItem('pokerData');
-    if (saved) {
-      const data = JSON.parse(saved);
-      players = data.players || [];
-      rounds = data.rounds || [];
-      render();
-      renderRoundSummary();
-      updateSummary();
-    } else {
-      addPlayer();
-    }
+    if (players.length === 0) addPlayer();
+    render();
+    renderRoundSummary();
+    updateSummary();
   </script>
 </body>
 </html>
