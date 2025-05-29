@@ -43,6 +43,9 @@
   <div class="controls">
     <button onclick="addPlayer()">新增玩家</button>
     <button onclick="saveRound()">儲存回合</button>
+    <label style="margin-left: 20px;">籌碼倍率：
+      <input type="number" id="multiplierInput" value="100" onchange="updateMultiplier(this.value)" />
+    </label>
   </div>
 
   <div id="players" class="player-container"></div>
@@ -72,6 +75,13 @@
   <script>
     let players = JSON.parse(localStorage.getItem('players')) || [];
     let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
+    let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
+
+    function updateMultiplier(value) {
+      multiplier = parseFloat(value) || 100;
+      localStorage.setItem('multiplier', multiplier);
+      players.forEach((_, i) => updateProfit(i));
+    }
 
     function addPlayer() {
       const player = {
@@ -123,7 +133,7 @@
     function updateProfit(index) {
       const remaining = players[index].remaining;
       const buyIn = players[index].buyIn;
-      players[index].profit = (remaining - buyIn) / 100;
+      players[index].profit = (remaining - buyIn) / multiplier;
       updateSummary();
       const profitElement = document.getElementById(`profit-${index}`);
       if (profitElement) {
@@ -174,6 +184,8 @@
       localStorage.clear();
       players = [];
       rounds = [];
+      multiplier = 100;
+      document.getElementById('multiplierInput').value = multiplier;
       addPlayer();
       render();
       renderRoundSummary();
@@ -181,6 +193,7 @@
     }
 
     function render() {
+      document.getElementById('multiplierInput').value = multiplier;
       const container = document.getElementById('players');
       container.innerHTML = '';
 
@@ -242,6 +255,7 @@
     function saveToStorage() {
       localStorage.setItem('players', JSON.stringify(players));
       localStorage.setItem('rounds', JSON.stringify(rounds));
+      localStorage.setItem('multiplier', multiplier);
     }
 
     if (players.length === 0) addPlayer();
