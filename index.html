@@ -69,6 +69,10 @@
       </thead>
       <tbody></tbody>
     </table>
+    <!-- 新增：全體總盈虧（歷史累計） -->
+    <p style="margin-top:10px;font-weight:bold;">
+      全體總盈虧（歷史累計）：<span id="grandTotalProfit">+0</span>
+    </p>
   </div>
 
   <div class="reset-button">
@@ -312,6 +316,19 @@
           <td>${totalProfit}</td>
         `;
       });
+
+      // 新增：更新全體總盈虧
+      updateGrandTotal();
+    }
+
+    // 新增：計算全體總盈虧（歷史累計）
+    function updateGrandTotal() {
+      const grand = players.reduce((acc, p) => {
+        const sumP = p.roundProfits.reduce((a, b) => a + b, 0);
+        return acc + sumP;
+      }, 0);
+      const el = document.getElementById('grandTotalProfit');
+      if (el) el.textContent = formatProfit(grand);
     }
 
     function updateSummary() {
