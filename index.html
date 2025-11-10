@@ -15,7 +15,9 @@
       padding: 10px;
       background: #fff;
       border-radius: 8px;
+      transition: opacity .2s ease;
     }
+    .player.inactive { opacity: .6; }
     .remove-button {
       position: absolute;
       top: 8px;
@@ -35,6 +37,7 @@
     .round-summary table { width: 100%; border-collapse: collapse; }
     .round-summary th, .round-summary td { padding: 10px; text-align: center; border: 1px solid #ccc; }
     .reset-button { margin-top: 20px; }
+    .tag { display:inline-block; margin-left:8px; padding:2px 6px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#555; }
   </style>
 </head>
 <body>
@@ -77,6 +80,38 @@
     let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
     let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
 
+    // 升級補丁：把舊資料補上 active 等欄位，避免出錯
+    (function migrateStorage() {
+      try {
+        players = Array.isArray(players) ? players : [];
+        rounds = Array.isArray(rounds) ? rounds : [];
+        if (typeof multiplier !== 'number' || isNaN(multiplier)) multiplier = 100;
+      } catch (e) {
+        players = []; rounds = []; multiplier = 100;
+      }
+      let changed = false;
+      players = players.map(p => {
+        const np = Object.assign({
+          name: '',
+          buyIn: 20000,
+          tokens: 1,
+          remainingInput: '',
+          remaining: 0,
+          profit: 0,
+          roundProfits: [],
+          active: true
+        }, p);
+        if (p.active === undefined) changed = true;
+        if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
+        np.buyIn = Number(np.buyIn) || 0;
+        np.tokens = Number(np.tokens) || 0;
+        np.remaining = Number(np.remaining) || 0;
+        np.profit = Number(np.profit) || 0;
+        return np;
+      });
+      if (changed) localStorage.setItem('players', JSON.stringify(players));
+    })();
+
     function updateMultiplier(value) {
       multiplier = parseFloat(value) || 100;
       localStorage.setItem('multiplier', multiplier);
@@ -91,7 +126,8 @@
         remainingInput: '',
         remaining: 0,
         profit: 0,
-        roundProfits: []
+        roundProfits: [],
+        active: true  // 新增：在場旗標
       };
       players.push(player);
       saveToStorage();
@@ -105,6 +141,7 @@
     }
 
     function buyIn(index) {
+      if (!players[index].active) return; // 退場者不可操作
       players[index].buyIn += 20000;
       players[index].tokens += 1;
       updateProfit(index);
@@ -113,6 +150,7 @@
     }
 
     function decreaseBuyIn(index) {
+      if (!players[index].active) return; // 退場者不可操作
       if (players[index].buyIn >= 20000 && players[index].tokens > 0) {
         players[index].buyIn -= 20000;
         players[index].tokens -= 1;
@@ -123,6 +161,7 @@
     }
 
     function updateRemaining(index, value) {
+      if (!players[index].active) return; // 退場者不可輸入
       players[index].remainingInput = value;
       const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
       players[index].remaining = numericValue;
@@ -131,13 +170,16 @@
     }
 
     function updateProfit(index) {
-      const remaining = players[index].remaining;
-      const buyIn = players[index].buyIn;
-      players[index].profit = (remaining - buyIn) / multiplier;
+      const p = players[index];
+      // 退場者當局一律 +0（以 0-0 計算）
+      const remaining = p.active ? p.remaining : 0;
+      const buyIn = p.active ? p.buyIn : 0;
+      p.profit = (remaining - buyIn) / multiplier;
+
       updateSummary();
       const profitElement = document.getElementById(`profit-${index}`);
       if (profitElement) {
-        profitElement.textContent = formatProfit(players[index].profit);
+        profitElement.textContent = formatProfit(p.profit);
       }
     }
 
@@ -151,9 +193,34 @@
       saveToStorage();
     }
 
+    // 新增：退場/復出切換
+    function toggleActive(index) {
+      const p = players[index];
+      p.active = !p.active;
+      if (!p.active) {
+        // 標記退場：當局數據全部歸 0，之後每局記 +0
+        p.buyIn = 0;
+        p.tokens = 0;
+        p.remainingInput = '';
+        p.remaining = 0;
+        p.profit = 0;
+      } else {
+        // 標記復出：給預設起始（你也可以改成 0/0/0 再自行買入）
+        p.buyIn = 20000;
+        p.tokens = 1;
+        p.remainingInput = '';
+        p.remaining = 0;
+        p.profit = 0;
+      }
+      saveToStorage();
+      render();
+      updateSummary();
+    }
+
     function saveRound() {
       const roundData = players.map(player => {
-        const roundProfit = player.profit;
+        // 退場者此局固定記 0，總盈虧自然保持不變
+        const roundProfit = player.active ? player.profit : 0;
         player.roundProfits.push(roundProfit);
         return {
           name: player.name,
@@ -170,8 +237,14 @@
 
     function resetCurrentRound() {
       players.forEach(player => {
-        player.buyIn = 20000;
-        player.tokens = 1;
+        if (player.active) {
+          player.buyIn = 20000;
+          player.tokens = 1;
+        } else {
+          // 退場者在新回合維持不參與（當局 +0）
+          player.buyIn = 0;
+          player.tokens = 0;
+        }
         player.remainingInput = '';
         player.remaining = 0;
         player.profit = 0;
@@ -199,7 +272,7 @@
 
       players.forEach((player, index) => {
         const div = document.createElement('div');
-        div.className = 'player';
+        div.className = 'player' + (player.active ? '' : ' inactive');
 
         const inputId = `input-${index}`;
         const profitId = `profit-${index}`;
@@ -209,13 +282,15 @@
           <p>
             <label>玩家名稱：</label>
             <input type="text" value="${player.name}" oninput="updateName(${index}, this.value)" placeholder="請輸入玩家名稱" />
+            ${player.active ? '' : '<span class="tag">已退場</span>'}
           </p>
           <p>買入籌碼：${player.buyIn}</p>
           <p>代幣數量：${player.tokens}</p>
-          <button onclick="buyIn(${index})">買入 (20000籌碼 + 1代幣)</button>
-          <button onclick="decreaseBuyIn(${index})">減少 (20000籌碼 - 1代幣)</button><br><br>
+          <button onclick="buyIn(${index})" ${!player.active ? 'disabled' : ''}>買入 (20000籌碼 + 1代幣)</button>
+          <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (20000籌碼 - 1代幣)</button>
+          <button onclick="toggleActive(${index})">${player.active ? '標記退場' : '標記復出'}</button><br><br>
           <label>手動輸入剩餘籌碼：</label>
-          <input id="${inputId}" type="text" value="${player.remainingInput}" oninput="updateRemaining(${index}, this.value)" />
+          <input id="${inputId}" type="text" value="${player.remainingInput}" oninput="updateRemaining(${index}, this.value)" ${!player.active ? 'disabled' : ''} />
           <p>盈虧：<span id="${profitId}">${formatProfit(player.profit)}</span></p>
         `;
 
@@ -265,3 +340,4 @@
   </script>
 </body>
 </html>
+
