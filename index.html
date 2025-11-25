@@ -31,14 +31,56 @@
       cursor: pointer;
     }
     .controls { margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    input[type="number"], input[type="text"] { width: 150px; }
+    .controls button { padding: 6px 12px; font-size: 14px; cursor: pointer; }
+    .controls label {
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:14px;
+    }
+    input[type="number"], input[type="text"] {
+      width: 150px;
+      box-sizing: border-box;
+      padding: 4px 6px;
+      font-size: 14px;
+    }
     .summary { font-weight: bold; margin-top: 20px; }
     .round-summary { margin-top: 20px; border-top: 2px solid #ccc; padding-top: 10px; }
     .round-summary table { width: 100%; border-collapse: collapse; }
     .round-summary th, .round-summary td { padding: 10px; text-align: center; border: 1px solid #ccc; }
     .reset-button { margin-top: 20px; }
+    .reset-button button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
     .tag { display:inline-block; margin-left:8px; padding:2px 6px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#555; }
+
+    /* 手機 / 小螢幕優化（可依需求再調整） */
+    @media (max-width: 768px) {
+      body { padding: 10px; }
+      .controls { flex-direction: column; align-items: stretch; gap: 8px; }
+      .controls > button { width: 100%; }
+      .controls label { width: 100%; justify-content: space-between; }
+      .controls label input[type="number"] { width: 40%; text-align: right; }
+
+      .player-container { flex-direction: column; gap: 10px; }
+      .player { flex: 1 1 100%; padding: 12px; }
+      .player p { margin: 4px 0; font-size: 14px; }
+      .player input[type="text"], .player input[type="number"] {
+        width: 100%; font-size: 14px; padding: 6px 8px;
+      }
+      .player button {
+        display:block;
+        width: 100%;
+        margin-bottom: 6px;
+        padding: 8px 0;
+        font-size: 14px;
+      }
+      .reset-button button { width: 100%; }
+    }
   </style>
+
+  <!-- Firebase compat SDK（適合在單一 HTML 裡直接使用） -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
   <!-- 匯出 Excel 用的 SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -87,22 +129,34 @@
   </div>
 
   <script>
-    let players = JSON.parse(localStorage.getItem('players')) || [];
-    let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
-    let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
-    // 全局單次買入籌碼
-    let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
+    // ===== Firebase 初始化 =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1d1bVyCI_CW_LEpejSqimwYhPA35ZI-8",
+      authDomain: "poker-66f5f.firebaseapp.com",
+      databaseURL: "https://poker-66f5f-default-rtdb.firebaseio.com",
+      projectId: "poker-66f5f",
+      storageBucket: "poker-66f5f.firebasestorage.app",
+      messagingSenderId: "790654097606",
+      appId: "1:790654097606:web:7bdba272d5e1b87b2f1fc7"
+    };
 
-    // 升級補丁：把舊資料補上 active 等欄位，避免出錯
-    (function migrateStorage() {
-      try {
-        players = Array.isArray(players) ? players : [];
-        rounds = Array.isArray(rounds) ? rounds : [];
-        if (typeof multiplier !== 'number' || isNaN(multiplier)) multiplier = 100;
-      } catch (e) {
-        players = []; rounds = []; multiplier = 100;
-      }
-      let changed = false;
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    // 單一房間，可之後改成動態 roomId
+    const roomRef = db.ref('pokerRooms/default');
+
+    // ===== 原本的變數，改成從 Firebase 來 =====
+    let players = [];
+    let rounds = [];
+    let multiplier = 100;
+    let buyInAmount = 20000;
+    let isInitialLoaded = false;
+
+    // 正規化 players / rounds 結構，避免舊資料出錯
+    function normalizeData() {
+      players = Array.isArray(players) ? players : [];
+      rounds = Array.isArray(rounds) ? rounds : [];
+
       players = players.map(p => {
         const np = Object.assign({
           name: '',
@@ -113,8 +167,7 @@
           profit: 0,
           roundProfits: [],
           active: true
-        }, p);
-        if (p.active === undefined) changed = true;
+        }, p || {});
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         np.buyIn = Number(np.buyIn) || 0;
         np.tokens = Number(np.tokens) || 0;
@@ -122,24 +175,77 @@
         np.profit = Number(np.profit) || 0;
         return np;
       });
-      if (changed) localStorage.setItem('players', JSON.stringify(players));
-    })();
+    }
+
+    // 從 Firebase 監聽資料（多人同步）
+    roomRef.on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        players = data.players || [];
+        rounds = data.rounds || [];
+        multiplier = (typeof data.multiplier === 'number' && !isNaN(data.multiplier)) ? data.multiplier : 100;
+        buyInAmount = (typeof data.buyInAmount === 'number' && !isNaN(data.buyInAmount)) ? data.buyInAmount : 20000;
+      } else {
+        players = [];
+        rounds = [];
+        multiplier = 100;
+        buyInAmount = 20000;
+      }
+
+      normalizeData();
+
+      // 若完全沒有玩家，自動建立一個空玩家（避免畫面空白）
+      if (players.length === 0) {
+        players.push({
+          name: '',
+          buyIn: buyInAmount,
+          tokens: 1,
+          remainingInput: '',
+          remaining: 0,
+          profit: 0,
+          roundProfits: [],
+          active: true
+        });
+        saveToStorage(); // 寫回 Firebase
+      }
+
+      // 更新 UI 上的 multiplier / buyInAmount 顯示
+      const mulInput = document.getElementById('multiplierInput');
+      if (mulInput) mulInput.value = multiplier;
+      const buyInInput = document.getElementById('buyInAmountInput');
+      if (buyInInput) buyInInput.value = buyInAmount;
+
+      isInitialLoaded = true;
+      render();
+      renderRoundSummary();
+      updateSummary();
+    });
+
+    // 將目前狀態寫入 Firebase
+    function saveToStorage() {
+      if (!isInitialLoaded) return; // 初始化尚未完成時避免不必要覆蓋
+      roomRef.set({
+        players,
+        rounds,
+        multiplier,
+        buyInAmount
+      });
+    }
 
     function updateMultiplier(value) {
       multiplier = parseFloat(value) || 100;
-      localStorage.setItem('multiplier', multiplier);
-      players.forEach((_, i) => updateProfit(i));
+      players.forEach((_, i) => updateProfit(i, false));
+      saveToStorage();
     }
 
     // 更新全局單次買入籌碼，並同步所有在場玩家
     function updateBuyInAmount(value) {
       buyInAmount = parseInt(value) || 0;
-      localStorage.setItem('buyInAmount', buyInAmount);
       // 依照目前代幣數量同步在場玩家的 buyIn
       players.forEach((p, i) => {
         if (p.active) {
           p.buyIn = buyInAmount * (p.tokens || 0);
-          updateProfit(i);
+          updateProfit(i, false);
         }
       });
       saveToStorage();
@@ -147,7 +253,7 @@
     }
 
     function addPlayer() {
-      const player = {
+      players.push({
         name: '',
         buyIn: buyInAmount,
         tokens: 1,
@@ -156,8 +262,7 @@
         profit: 0,
         roundProfits: [],
         active: true
-      };
-      players.push(player);
+      });
       saveToStorage();
       render();
     }
@@ -172,7 +277,7 @@
       if (!players[index].active) return; // 退場者不可操作
       players[index].buyIn += buyInAmount;
       players[index].tokens += 1;
-      updateProfit(index);
+      updateProfit(index, false);
       saveToStorage();
       render();
     }
@@ -182,7 +287,7 @@
       if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
         players[index].buyIn -= buyInAmount;
         players[index].tokens -= 1;
-        updateProfit(index);
+        updateProfit(index, false);
         saveToStorage();
         render();
       }
@@ -193,18 +298,18 @@
       players[index].remainingInput = value;
       const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
       players[index].remaining = numericValue;
-      updateProfit(index);
+      updateProfit(index, false);
       saveToStorage();
     }
 
-    function updateProfit(index) {
+    function updateProfit(index, skipSummary) {
       const p = players[index];
       // 退場者當局一律 +0（以 0-0 計算）
       const remaining = p.active ? p.remaining : 0;
       const buyIn = p.active ? p.buyIn : 0;
       p.profit = (remaining - buyIn) / multiplier;
 
-      updateSummary();
+      if (!skipSummary) updateSummary();
       const profitElement = document.getElementById(`profit-${index}`);
       if (profitElement) {
         profitElement.textContent = formatProfit(p.profit);
@@ -258,9 +363,9 @@
       });
 
       rounds.push(roundData);
-      saveToStorage();
       resetCurrentRound();
       renderRoundSummary();
+      saveToStorage();
     }
 
     function resetCurrentRound() {
@@ -277,29 +382,20 @@
         player.remaining = 0;
         player.profit = 0;
       });
-      saveToStorage();
       render();
+      updateSummary();
     }
 
     function clearStorage() {
-      localStorage.clear();
       players = [];
       rounds = [];
       multiplier = 100;
       buyInAmount = 20000;
-      document.getElementById('multiplierInput').value = multiplier;
-      document.getElementById('buyInAmountInput').value = buyInAmount;
-      addPlayer();
-      render();
-      renderRoundSummary();
-      updateSummary();
+      saveToStorage();
+      // 等 Firebase on('value') 回來後會自動 render
     }
 
     function render() {
-      document.getElementById('multiplierInput').value = multiplier;
-      const buyInInput = document.getElementById('buyInAmountInput');
-      if (buyInInput) buyInInput.value = buyInAmount;
-
       const container = document.getElementById('players');
       container.innerHTML = '';
 
@@ -373,13 +469,6 @@
       document.getElementById('totalRemaining').textContent = totalRemaining;
     }
 
-    function saveToStorage() {
-      localStorage.setItem('players', JSON.stringify(players));
-      localStorage.setItem('rounds', JSON.stringify(rounds));
-      localStorage.setItem('multiplier', multiplier);
-      localStorage.setItem('buyInAmount', buyInAmount);
-    }
-
     // 匯出 Excel：玩家名稱 + 歷史總盈虧
     function exportExcel() {
       if (typeof XLSX === 'undefined') {
@@ -410,11 +499,7 @@
 
       XLSX.writeFile(workbook, "poker_total_profit.xlsx");
     }
-
-    if (players.length === 0) addPlayer();
-    render();
-    renderRoundSummary();
-    updateSummary();
   </script>
 </body>
 </html>
+
