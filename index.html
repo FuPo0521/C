@@ -26,33 +26,24 @@
       color: white;
       border: none;
       border-radius: 50%;
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
+      font-size: 14px;
+      line-height: 18px;
+      text-align: center;
+      padding: 0;
       cursor: pointer;
     }
     .controls { margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
-    .controls button { padding: 6px 12px; font-size: 14px; cursor: pointer; }
-    .controls label {
-      display:flex;
-      align-items:center;
-      gap:6px;
-      font-size:14px;
-    }
-    input[type="number"], input[type="text"] {
-      width: 150px;
-      box-sizing: border-box;
-      padding: 4px 6px;
-      font-size: 14px;
-    }
+    input[type="number"], input[type="text"] { width: 150px; }
     .summary { font-weight: bold; margin-top: 20px; }
     .round-summary { margin-top: 20px; border-top: 2px solid #ccc; padding-top: 10px; }
     .round-summary table { width: 100%; border-collapse: collapse; }
     .round-summary th, .round-summary td { padding: 10px; text-align: center; border: 1px solid #ccc; }
     .reset-button { margin-top: 20px; }
-    .reset-button button { padding: 8px 16px; font-size: 14px; cursor: pointer; }
     .tag { display:inline-block; margin-left:8px; padding:2px 6px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#555; }
 
-    /* 手機 / 小螢幕優化（可依需求再調整） */
+    /* 手機優化 */
     @media (max-width: 768px) {
       body { padding: 10px; }
       .controls { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -77,7 +68,7 @@
     }
   </style>
 
-  <!-- Firebase compat SDK（適合在單一 HTML 裡直接使用） -->
+  <!-- Firebase compat SDK（給單檔 HTML 用） -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
@@ -129,7 +120,7 @@
   </div>
 
   <script>
-    // ===== Firebase 初始化 =====
+    // ===== Firebase 初始化（用你的專案設定） =====
     const firebaseConfig = {
       apiKey: "AIzaSyC1d1bVyCI_CW_LEpejSqimwYhPA35ZI-8",
       authDomain: "poker-66f5f.firebaseapp.com",
@@ -142,17 +133,16 @@
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
-    // 單一房間，可之後改成動態 roomId
+    // 若未來想做多桌，可以把 'default' 換成動態 roomId
     const roomRef = db.ref('pokerRooms/default');
 
-    // ===== 原本的變數，改成從 Firebase 來 =====
+    // ===== 狀態變數 =====
     let players = [];
     let rounds = [];
     let multiplier = 100;
     let buyInAmount = 20000;
     let isInitialLoaded = false;
 
-    // 正規化 players / rounds 結構，避免舊資料出錯
     function normalizeData() {
       players = Array.isArray(players) ? players : [];
       rounds = Array.isArray(rounds) ? rounds : [];
@@ -194,7 +184,7 @@
 
       normalizeData();
 
-      // 若完全沒有玩家，自動建立一個空玩家（避免畫面空白）
+      // 若完全沒有玩家，新增一個預設玩家
       if (players.length === 0) {
         players.push({
           name: '',
@@ -206,14 +196,19 @@
           roundProfits: [],
           active: true
         });
-        saveToStorage(); // 寫回 Firebase
+        // 這次寫回去，之後就走正常流程
+        roomRef.set({
+          players,
+          rounds,
+          multiplier,
+          buyInAmount
+        });
       }
 
-      // 更新 UI 上的 multiplier / buyInAmount 顯示
       const mulInput = document.getElementById('multiplierInput');
       if (mulInput) mulInput.value = multiplier;
-      const buyInInput = document.getElementById('buyInAmountInput');
-      if (buyInInput) buyInInput.value = buyInAmount;
+      const buyInInputEl = document.getElementById('buyInAmountInput');
+      if (buyInInputEl) buyInInputEl.value = buyInAmount;
 
       isInitialLoaded = true;
       render();
@@ -221,9 +216,8 @@
       updateSummary();
     });
 
-    // 將目前狀態寫入 Firebase
     function saveToStorage() {
-      if (!isInitialLoaded) return; // 初始化尚未完成時避免不必要覆蓋
+      if (!isInitialLoaded) return;
       roomRef.set({
         players,
         rounds,
@@ -234,26 +228,27 @@
 
     function updateMultiplier(value) {
       multiplier = parseFloat(value) || 100;
-      players.forEach((_, i) => updateProfit(i, false));
+      players.forEach((_, i) => updateProfit(i, true));
+      updateSummary();
       saveToStorage();
     }
 
     // 更新全局單次買入籌碼，並同步所有在場玩家
     function updateBuyInAmount(value) {
       buyInAmount = parseInt(value) || 0;
-      // 依照目前代幣數量同步在場玩家的 buyIn
       players.forEach((p, i) => {
         if (p.active) {
           p.buyIn = buyInAmount * (p.tokens || 0);
-          updateProfit(i, false);
+          updateProfit(i, true);
         }
       });
+      updateSummary();
       saveToStorage();
       render();
     }
 
     function addPlayer() {
-      players.push({
+      const player = {
         name: '',
         buyIn: buyInAmount,
         tokens: 1,
@@ -262,7 +257,8 @@
         profit: 0,
         roundProfits: [],
         active: true
-      });
+      };
+      players.push(player);
       saveToStorage();
       render();
     }
@@ -271,6 +267,8 @@
       players.splice(index, 1);
       saveToStorage();
       render();
+      renderRoundSummary();
+      updateSummary();
     }
 
     function buyIn(index) {
@@ -302,17 +300,17 @@
       saveToStorage();
     }
 
-    function updateProfit(index, skipSummary) {
+    function updateProfit(index, skipDomUpdate) {
       const p = players[index];
-      // 退場者當局一律 +0（以 0-0 計算）
       const remaining = p.active ? p.remaining : 0;
       const buyIn = p.active ? p.buyIn : 0;
       p.profit = (remaining - buyIn) / multiplier;
 
-      if (!skipSummary) updateSummary();
-      const profitElement = document.getElementById(`profit-${index}`);
-      if (profitElement) {
-        profitElement.textContent = formatProfit(p.profit);
+      if (!skipDomUpdate) {
+        const profitElement = document.getElementById(`profit-${index}`);
+        if (profitElement) {
+          profitElement.textContent = formatProfit(p.profit);
+        }
       }
     }
 
@@ -324,6 +322,7 @@
     function updateName(index, value) {
       players[index].name = value;
       saveToStorage();
+      renderRoundSummary(); // 名稱也影響下方表格
     }
 
     // 退場/復出切換
@@ -331,14 +330,12 @@
       const p = players[index];
       p.active = !p.active;
       if (!p.active) {
-        // 標記退場：當局數據全部歸 0，之後每局記 +0
         p.buyIn = 0;
         p.tokens = 0;
         p.remainingInput = '';
         p.remaining = 0;
         p.profit = 0;
       } else {
-        // 標記復出：給預設起始
         p.buyIn = buyInAmount;
         p.tokens = 1;
         p.remainingInput = '';
@@ -348,11 +345,11 @@
       saveToStorage();
       render();
       updateSummary();
+      renderRoundSummary();
     }
 
     function saveRound() {
       const roundData = players.map(player => {
-        // 退場者此局固定記 0，總盈虧自然保持不變
         const roundProfit = player.active ? player.profit : 0;
         player.roundProfits.push(roundProfit);
         return {
@@ -374,7 +371,6 @@
           player.buyIn = buyInAmount;
           player.tokens = 1;
         } else {
-          // 退場者在新回合維持不參與（當局 +0）
           player.buyIn = 0;
           player.tokens = 0;
         }
@@ -392,10 +388,15 @@
       multiplier = 100;
       buyInAmount = 20000;
       saveToStorage();
-      // 等 Firebase on('value') 回來後會自動 render
+      // 等 Firebase 回推資料後會自動 render
     }
 
     function render() {
+      const mulInput = document.getElementById('multiplierInput');
+      if (mulInput) mulInput.value = multiplier;
+      const buyInInput = document.getElementById('buyInAmountInput');
+      if (buyInInput) buyInInput.value = buyInAmount;
+
       const container = document.getElementById('players');
       container.innerHTML = '';
 
@@ -425,6 +426,8 @@
 
         container.appendChild(div);
       });
+
+      updateSummary();
     }
 
     function renderRoundSummary() {
@@ -442,7 +445,6 @@
         `;
       });
 
-      // 更新全體總盈虧
       updateGrandTotal();
     }
 
@@ -488,7 +490,6 @@
       const worksheetData = [headers, ...data];
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
-      // 欄寬稍微調整好看一點
       worksheet['!cols'] = [
         { wch: 20 }, // 玩家名稱
         { wch: 10 }  // 總盈虧
@@ -502,4 +503,5 @@
   </script>
 </body>
 </html>
+
 
