@@ -30,7 +30,7 @@
       height: 24px;
       cursor: pointer;
     }
-    .controls { margin-bottom: 20px; }
+    .controls { margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
     input[type="number"], input[type="text"] { width: 150px; }
     .summary { font-weight: bold; margin-top: 20px; }
     .round-summary { margin-top: 20px; border-top: 2px solid #ccc; padding-top: 10px; }
@@ -39,6 +39,8 @@
     .reset-button { margin-top: 20px; }
     .tag { display:inline-block; margin-left:8px; padding:2px 6px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#555; }
   </style>
+  <!-- 匯出 Excel 用的 SheetJS -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <h1>德州撲克 籌碼與盈虧計算</h1>
@@ -46,13 +48,15 @@
   <div class="controls">
     <button onclick="addPlayer()">新增玩家</button>
     <button onclick="saveRound()">儲存回合</button>
-    <label style="margin-left: 20px;">籌碼倍率：
+    <label>籌碼倍率：
       <input type="number" id="multiplierInput" value="100" onchange="updateMultiplier(this.value)" />
     </label>
-    <!-- 新增：全局單次買入籌碼設定 -->
-    <label style="margin-left: 20px;">單次買入籌碼：
+    <!-- 全局單次買入籌碼設定 -->
+    <label>單次買入籌碼：
       <input type="number" id="buyInAmountInput" value="20000" onchange="updateBuyInAmount(this.value)" />
     </label>
+    <!-- 匯出 Excel 按鈕（只匯出玩家名稱＋總盈虧） -->
+    <button onclick="exportExcel()">匯出總盈虧 Excel</button>
   </div>
 
   <div id="players" class="player-container"></div>
@@ -86,7 +90,7 @@
     let players = JSON.parse(localStorage.getItem('players')) || [];
     let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
     let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
-    // 新增：全局單次買入籌碼
+    // 全局單次買入籌碼
     let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
 
     // 升級補丁：把舊資料補上 active 等欄位，避免出錯
@@ -127,7 +131,7 @@
       players.forEach((_, i) => updateProfit(i));
     }
 
-    // 新增：更新全局單次買入籌碼，並同步所有在場玩家
+    // 更新全局單次買入籌碼，並同步所有在場玩家
     function updateBuyInAmount(value) {
       buyInAmount = parseInt(value) || 0;
       localStorage.setItem('buyInAmount', buyInAmount);
@@ -376,6 +380,37 @@
       localStorage.setItem('buyInAmount', buyInAmount);
     }
 
+    // 匯出 Excel：玩家名稱 + 歷史總盈虧
+    function exportExcel() {
+      if (typeof XLSX === 'undefined') {
+        alert('XLSX 函式庫尚未載入，請檢查網路或 CDN。');
+        return;
+      }
+
+      const headers = ["玩家名稱", "總盈虧"];
+
+      const data = players.map(p => {
+        const total = Math.round(
+          p.roundProfits.reduce((a, b) => a + b, 0)
+        );
+        return [p.name || '', total];
+      });
+
+      const worksheetData = [headers, ...data];
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+
+      // 欄寬稍微調整好看一點
+      worksheet['!cols'] = [
+        { wch: 20 }, // 玩家名稱
+        { wch: 10 }  // 總盈虧
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "總盈虧");
+
+      XLSX.writeFile(workbook, "poker_total_profit.xlsx");
+    }
+
     if (players.length === 0) addPlayer();
     render();
     renderRoundSummary();
@@ -383,5 +418,6 @@
   </script>
 </body>
 </html>
+
 
 
