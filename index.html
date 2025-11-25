@@ -49,6 +49,10 @@
     <label style="margin-left: 20px;">籌碼倍率：
       <input type="number" id="multiplierInput" value="100" onchange="updateMultiplier(this.value)" />
     </label>
+    <!-- 新增：全局單次買入籌碼設定 -->
+    <label style="margin-left: 20px;">單次買入籌碼：
+      <input type="number" id="buyInAmountInput" value="20000" onchange="updateBuyInAmount(this.value)" />
+    </label>
   </div>
 
   <div id="players" class="player-container"></div>
@@ -69,7 +73,6 @@
       </thead>
       <tbody></tbody>
     </table>
-    <!-- 新增：全體總盈虧（歷史累計） -->
     <p style="margin-top:10px;font-weight:bold;">
       全體總盈虧（歷史累計）：<span id="grandTotalProfit">+0</span>
     </p>
@@ -83,6 +86,8 @@
     let players = JSON.parse(localStorage.getItem('players')) || [];
     let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
     let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
+    // 新增：全局單次買入籌碼
+    let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
 
     // 升級補丁：把舊資料補上 active 等欄位，避免出錯
     (function migrateStorage() {
@@ -97,7 +102,7 @@
       players = players.map(p => {
         const np = Object.assign({
           name: '',
-          buyIn: 20000,
+          buyIn: buyInAmount,
           tokens: 1,
           remainingInput: '',
           remaining: 0,
@@ -122,16 +127,31 @@
       players.forEach((_, i) => updateProfit(i));
     }
 
+    // 新增：更新全局單次買入籌碼，並同步所有在場玩家
+    function updateBuyInAmount(value) {
+      buyInAmount = parseInt(value) || 0;
+      localStorage.setItem('buyInAmount', buyInAmount);
+      // 依照目前代幣數量同步在場玩家的 buyIn
+      players.forEach((p, i) => {
+        if (p.active) {
+          p.buyIn = buyInAmount * (p.tokens || 0);
+          updateProfit(i);
+        }
+      });
+      saveToStorage();
+      render();
+    }
+
     function addPlayer() {
       const player = {
         name: '',
-        buyIn: 20000,
+        buyIn: buyInAmount,
         tokens: 1,
         remainingInput: '',
         remaining: 0,
         profit: 0,
         roundProfits: [],
-        active: true  // 新增：在場旗標
+        active: true
       };
       players.push(player);
       saveToStorage();
@@ -146,7 +166,7 @@
 
     function buyIn(index) {
       if (!players[index].active) return; // 退場者不可操作
-      players[index].buyIn += 20000;
+      players[index].buyIn += buyInAmount;
       players[index].tokens += 1;
       updateProfit(index);
       saveToStorage();
@@ -155,8 +175,8 @@
 
     function decreaseBuyIn(index) {
       if (!players[index].active) return; // 退場者不可操作
-      if (players[index].buyIn >= 20000 && players[index].tokens > 0) {
-        players[index].buyIn -= 20000;
+      if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
+        players[index].buyIn -= buyInAmount;
         players[index].tokens -= 1;
         updateProfit(index);
         saveToStorage();
@@ -197,7 +217,7 @@
       saveToStorage();
     }
 
-    // 新增：退場/復出切換
+    // 退場/復出切換
     function toggleActive(index) {
       const p = players[index];
       p.active = !p.active;
@@ -209,8 +229,8 @@
         p.remaining = 0;
         p.profit = 0;
       } else {
-        // 標記復出：給預設起始（你也可以改成 0/0/0 再自行買入）
-        p.buyIn = 20000;
+        // 標記復出：給預設起始
+        p.buyIn = buyInAmount;
         p.tokens = 1;
         p.remainingInput = '';
         p.remaining = 0;
@@ -242,7 +262,7 @@
     function resetCurrentRound() {
       players.forEach(player => {
         if (player.active) {
-          player.buyIn = 20000;
+          player.buyIn = buyInAmount;
           player.tokens = 1;
         } else {
           // 退場者在新回合維持不參與（當局 +0）
@@ -262,7 +282,9 @@
       players = [];
       rounds = [];
       multiplier = 100;
+      buyInAmount = 20000;
       document.getElementById('multiplierInput').value = multiplier;
+      document.getElementById('buyInAmountInput').value = buyInAmount;
       addPlayer();
       render();
       renderRoundSummary();
@@ -271,6 +293,9 @@
 
     function render() {
       document.getElementById('multiplierInput').value = multiplier;
+      const buyInInput = document.getElementById('buyInAmountInput');
+      if (buyInInput) buyInInput.value = buyInAmount;
+
       const container = document.getElementById('players');
       container.innerHTML = '';
 
@@ -290,8 +315,8 @@
           </p>
           <p>買入籌碼：${player.buyIn}</p>
           <p>代幣數量：${player.tokens}</p>
-          <button onclick="buyIn(${index})" ${!player.active ? 'disabled' : ''}>買入 (20000籌碼 + 1代幣)</button>
-          <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (20000籌碼 - 1代幣)</button>
+          <button onclick="buyIn(${index})" ${!player.active ? 'disabled' : ''}>買入 (${buyInAmount}籌碼 + 1代幣)</button>
+          <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (${buyInAmount}籌碼 - 1代幣)</button>
           <button onclick="toggleActive(${index})">${player.active ? '標記退場' : '標記復出'}</button><br><br>
           <label>手動輸入剩餘籌碼：</label>
           <input id="${inputId}" type="text" value="${player.remainingInput}" oninput="updateRemaining(${index}, this.value)" ${!player.active ? 'disabled' : ''} />
@@ -317,11 +342,11 @@
         `;
       });
 
-      // 新增：更新全體總盈虧
+      // 更新全體總盈虧
       updateGrandTotal();
     }
 
-    // 新增：計算全體總盈虧（歷史累計）
+    // 計算全體總盈虧（歷史累計）
     function updateGrandTotal() {
       const grand = players.reduce((acc, p) => {
         const sumP = p.roundProfits.reduce((a, b) => a + b, 0);
@@ -348,6 +373,7 @@
       localStorage.setItem('players', JSON.stringify(players));
       localStorage.setItem('rounds', JSON.stringify(rounds));
       localStorage.setItem('multiplier', multiplier);
+      localStorage.setItem('buyInAmount', buyInAmount);
     }
 
     if (players.length === 0) addPlayer();
@@ -357,4 +383,5 @@
   </script>
 </body>
 </html>
+
 
