@@ -26,12 +26,8 @@
       color: white;
       border: none;
       border-radius: 50%;
-      width: 20px;
-      height: 20px;
-      font-size: 14px;
-      line-height: 18px;
-      text-align: center;
-      padding: 0;
+      width: 24px;
+      height: 24px;
       cursor: pointer;
     }
     .controls { margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
@@ -42,36 +38,7 @@
     .round-summary th, .round-summary td { padding: 10px; text-align: center; border: 1px solid #ccc; }
     .reset-button { margin-top: 20px; }
     .tag { display:inline-block; margin-left:8px; padding:2px 6px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#555; }
-
-    /* 手機優化 */
-    @media (max-width: 768px) {
-      body { padding: 10px; }
-      .controls { flex-direction: column; align-items: stretch; gap: 8px; }
-      .controls > button { width: 100%; }
-      .controls label { width: 100%; justify-content: space-between; }
-      .controls label input[type="number"] { width: 40%; text-align: right; }
-
-      .player-container { flex-direction: column; gap: 10px; }
-      .player { flex: 1 1 100%; padding: 12px; }
-      .player p { margin: 4px 0; font-size: 14px; }
-      .player input[type="text"], .player input[type="number"] {
-        width: 100%; font-size: 14px; padding: 6px 8px;
-      }
-      .player button {
-        display:block;
-        width: 100%;
-        margin-bottom: 6px;
-        padding: 8px 0;
-        font-size: 14px;
-      }
-      .reset-button button { width: 100%; }
-    }
   </style>
-
-  <!-- Firebase compat SDK（給單檔 HTML 用） -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-
   <!-- 匯出 Excel 用的 SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -120,33 +87,22 @@
   </div>
 
   <script>
-    // ===== Firebase 初始化（用你的專案設定） =====
-    const firebaseConfig = {
-      apiKey: "AIzaSyC1d1bVyCI_CW_LEpejSqimwYhPA35ZI-8",
-      authDomain: "poker-66f5f.firebaseapp.com",
-      databaseURL: "https://poker-66f5f-default-rtdb.firebaseio.com",
-      projectId: "poker-66f5f",
-      storageBucket: "poker-66f5f.firebasestorage.app",
-      messagingSenderId: "790654097606",
-      appId: "1:790654097606:web:7bdba272d5e1b87b2f1fc7"
-    };
+    let players = JSON.parse(localStorage.getItem('players')) || [];
+    let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
+    let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
+    // 全局單次買入籌碼
+    let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    // 若未來想做多桌，可以把 'default' 換成動態 roomId
-    const roomRef = db.ref('pokerRooms/default');
-
-    // ===== 狀態變數 =====
-    let players = [];
-    let rounds = [];
-    let multiplier = 100;
-    let buyInAmount = 20000;
-    let isInitialLoaded = false;
-
-    function normalizeData() {
-      players = Array.isArray(players) ? players : [];
-      rounds = Array.isArray(rounds) ? rounds : [];
-
+    // 升級補丁：把舊資料補上 active 等欄位，避免出錯
+    (function migrateStorage() {
+      try {
+        players = Array.isArray(players) ? players : [];
+        rounds = Array.isArray(rounds) ? rounds : [];
+        if (typeof multiplier !== 'number' || isNaN(multiplier)) multiplier = 100;
+      } catch (e) {
+        players = []; rounds = []; multiplier = 100;
+      }
+      let changed = false;
       players = players.map(p => {
         const np = Object.assign({
           name: '',
@@ -157,7 +113,8 @@
           profit: 0,
           roundProfits: [],
           active: true
-        }, p || {});
+        }, p);
+        if (p.active === undefined) changed = true;
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         np.buyIn = Number(np.buyIn) || 0;
         np.tokens = Number(np.tokens) || 0;
@@ -165,84 +122,26 @@
         np.profit = Number(np.profit) || 0;
         return np;
       });
-    }
-
-    // 從 Firebase 監聽資料（多人同步）
-    roomRef.on('value', snapshot => {
-      const data = snapshot.val();
-      if (data) {
-        players = data.players || [];
-        rounds = data.rounds || [];
-        multiplier = (typeof data.multiplier === 'number' && !isNaN(data.multiplier)) ? data.multiplier : 100;
-        buyInAmount = (typeof data.buyInAmount === 'number' && !isNaN(data.buyInAmount)) ? data.buyInAmount : 20000;
-      } else {
-        players = [];
-        rounds = [];
-        multiplier = 100;
-        buyInAmount = 20000;
-      }
-
-      normalizeData();
-
-      // 若完全沒有玩家，新增一個預設玩家
-      if (players.length === 0) {
-        players.push({
-          name: '',
-          buyIn: buyInAmount,
-          tokens: 1,
-          remainingInput: '',
-          remaining: 0,
-          profit: 0,
-          roundProfits: [],
-          active: true
-        });
-        // 這次寫回去，之後就走正常流程
-        roomRef.set({
-          players,
-          rounds,
-          multiplier,
-          buyInAmount
-        });
-      }
-
-      const mulInput = document.getElementById('multiplierInput');
-      if (mulInput) mulInput.value = multiplier;
-      const buyInInputEl = document.getElementById('buyInAmountInput');
-      if (buyInInputEl) buyInInputEl.value = buyInAmount;
-
-      isInitialLoaded = true;
-      render();
-      renderRoundSummary();
-      updateSummary();
-    });
-
-    function saveToStorage() {
-      if (!isInitialLoaded) return;
-      roomRef.set({
-        players,
-        rounds,
-        multiplier,
-        buyInAmount
-      });
-    }
+      if (changed) localStorage.setItem('players', JSON.stringify(players));
+    })();
 
     function updateMultiplier(value) {
       multiplier = parseFloat(value) || 100;
-      players.forEach((_, i) => updateProfit(i, true));
-      updateSummary();
-      saveToStorage();
+      localStorage.setItem('multiplier', multiplier);
+      players.forEach((_, i) => updateProfit(i));
     }
 
     // 更新全局單次買入籌碼，並同步所有在場玩家
     function updateBuyInAmount(value) {
       buyInAmount = parseInt(value) || 0;
+      localStorage.setItem('buyInAmount', buyInAmount);
+      // 依照目前代幣數量同步在場玩家的 buyIn
       players.forEach((p, i) => {
         if (p.active) {
           p.buyIn = buyInAmount * (p.tokens || 0);
-          updateProfit(i, true);
+          updateProfit(i);
         }
       });
-      updateSummary();
       saveToStorage();
       render();
     }
@@ -267,15 +166,13 @@
       players.splice(index, 1);
       saveToStorage();
       render();
-      renderRoundSummary();
-      updateSummary();
     }
 
     function buyIn(index) {
       if (!players[index].active) return; // 退場者不可操作
       players[index].buyIn += buyInAmount;
       players[index].tokens += 1;
-      updateProfit(index, false);
+      updateProfit(index);
       saveToStorage();
       render();
     }
@@ -285,7 +182,7 @@
       if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
         players[index].buyIn -= buyInAmount;
         players[index].tokens -= 1;
-        updateProfit(index, false);
+        updateProfit(index);
         saveToStorage();
         render();
       }
@@ -296,21 +193,21 @@
       players[index].remainingInput = value;
       const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
       players[index].remaining = numericValue;
-      updateProfit(index, false);
+      updateProfit(index);
       saveToStorage();
     }
 
-    function updateProfit(index, skipDomUpdate) {
+    function updateProfit(index) {
       const p = players[index];
+      // 退場者當局一律 +0（以 0-0 計算）
       const remaining = p.active ? p.remaining : 0;
       const buyIn = p.active ? p.buyIn : 0;
       p.profit = (remaining - buyIn) / multiplier;
 
-      if (!skipDomUpdate) {
-        const profitElement = document.getElementById(`profit-${index}`);
-        if (profitElement) {
-          profitElement.textContent = formatProfit(p.profit);
-        }
+      updateSummary();
+      const profitElement = document.getElementById(`profit-${index}`);
+      if (profitElement) {
+        profitElement.textContent = formatProfit(p.profit);
       }
     }
 
@@ -322,7 +219,6 @@
     function updateName(index, value) {
       players[index].name = value;
       saveToStorage();
-      renderRoundSummary(); // 名稱也影響下方表格
     }
 
     // 退場/復出切換
@@ -330,12 +226,14 @@
       const p = players[index];
       p.active = !p.active;
       if (!p.active) {
+        // 標記退場：當局數據全部歸 0，之後每局記 +0
         p.buyIn = 0;
         p.tokens = 0;
         p.remainingInput = '';
         p.remaining = 0;
         p.profit = 0;
       } else {
+        // 標記復出：給預設起始
         p.buyIn = buyInAmount;
         p.tokens = 1;
         p.remainingInput = '';
@@ -345,11 +243,11 @@
       saveToStorage();
       render();
       updateSummary();
-      renderRoundSummary();
     }
 
     function saveRound() {
       const roundData = players.map(player => {
+        // 退場者此局固定記 0，總盈虧自然保持不變
         const roundProfit = player.active ? player.profit : 0;
         player.roundProfits.push(roundProfit);
         return {
@@ -360,9 +258,9 @@
       });
 
       rounds.push(roundData);
+      saveToStorage();
       resetCurrentRound();
       renderRoundSummary();
-      saveToStorage();
     }
 
     function resetCurrentRound() {
@@ -371,6 +269,7 @@
           player.buyIn = buyInAmount;
           player.tokens = 1;
         } else {
+          // 退場者在新回合維持不參與（當局 +0）
           player.buyIn = 0;
           player.tokens = 0;
         }
@@ -378,22 +277,26 @@
         player.remaining = 0;
         player.profit = 0;
       });
+      saveToStorage();
       render();
-      updateSummary();
     }
 
     function clearStorage() {
+      localStorage.clear();
       players = [];
       rounds = [];
       multiplier = 100;
       buyInAmount = 20000;
-      saveToStorage();
-      // 等 Firebase 回推資料後會自動 render
+      document.getElementById('multiplierInput').value = multiplier;
+      document.getElementById('buyInAmountInput').value = buyInAmount;
+      addPlayer();
+      render();
+      renderRoundSummary();
+      updateSummary();
     }
 
     function render() {
-      const mulInput = document.getElementById('multiplierInput');
-      if (mulInput) mulInput.value = multiplier;
+      document.getElementById('multiplierInput').value = multiplier;
       const buyInInput = document.getElementById('buyInAmountInput');
       if (buyInInput) buyInInput.value = buyInAmount;
 
@@ -426,8 +329,6 @@
 
         container.appendChild(div);
       });
-
-      updateSummary();
     }
 
     function renderRoundSummary() {
@@ -445,6 +346,7 @@
         `;
       });
 
+      // 更新全體總盈虧
       updateGrandTotal();
     }
 
@@ -471,6 +373,13 @@
       document.getElementById('totalRemaining').textContent = totalRemaining;
     }
 
+    function saveToStorage() {
+      localStorage.setItem('players', JSON.stringify(players));
+      localStorage.setItem('rounds', JSON.stringify(rounds));
+      localStorage.setItem('multiplier', multiplier);
+      localStorage.setItem('buyInAmount', buyInAmount);
+    }
+
     // 匯出 Excel：玩家名稱 + 歷史總盈虧
     function exportExcel() {
       if (typeof XLSX === 'undefined') {
@@ -490,6 +399,7 @@
       const worksheetData = [headers, ...data];
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
+      // 欄寬稍微調整好看一點
       worksheet['!cols'] = [
         { wch: 20 }, // 玩家名稱
         { wch: 10 }  // 總盈虧
@@ -500,8 +410,433 @@
 
       XLSX.writeFile(workbook, "poker_total_profit.xlsx");
     }
+
+    if (players.length === 0) addPlayer();
+    render();
+    renderRoundSummary();
+    updateSummary();
+  </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>德州撲克籌碼追蹤器</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+    .player-container { display: flex; flex-wrap: wrap; gap: 10px; }
+    .player {
+      position: relative;
+      flex: 1 1 300px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background: #fff;
+      border-radius: 8px;
+      transition: opacity .2s ease;
+    }
+    .player.inactive { opacity: .6; }
+    .remove-button {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+    }
+    .controls { margin-bottom: 20px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    input[type="number"], input[type="text"] { width: 150px; }
+    .summary { font-weight: bold; margin-top: 20px; }
+    .round-summary { margin-top: 20px; border-top: 2px solid #ccc; padding-top: 10px; }
+    .round-summary table { width: 100%; border-collapse: collapse; }
+    .round-summary th, .round-summary td { padding: 10px; text-align: center; border: 1px solid #ccc; }
+    .reset-button { margin-top: 20px; }
+    .tag { display:inline-block; margin-left:8px; padding:2px 6px; border:1px solid #bbb; border-radius:999px; font-size:12px; color:#555; }
+  </style>
+  <!-- 匯出 Excel 用的 SheetJS -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <h1>德州撲克 籌碼與盈虧計算</h1>
+
+  <div class="controls">
+    <button onclick="addPlayer()">新增玩家</button>
+    <button onclick="saveRound()">儲存回合</button>
+    <label>籌碼倍率：
+      <input type="number" id="multiplierInput" value="100" onchange="updateMultiplier(this.value)" />
+    </label>
+    <!-- 全局單次買入籌碼設定 -->
+    <label>單次買入籌碼：
+      <input type="number" id="buyInAmountInput" value="20000" onchange="updateBuyInAmount(this.value)" />
+    </label>
+    <!-- 匯出 Excel 按鈕（只匯出玩家名稱＋總盈虧） -->
+    <button onclick="exportExcel()">匯出總盈虧 Excel</button>
+  </div>
+
+  <div id="players" class="player-container"></div>
+
+  <div class="summary">
+    <p>總買入籌碼：<span id="totalBuyIn">0</span> | 總剩餘籌碼：<span id="totalRemaining">0</span></p>
+  </div>
+
+  <div class="round-summary">
+    <h3>回合盈虧紀錄</h3>
+    <table id="roundsTable">
+      <thead>
+        <tr>
+          <th>玩家名稱</th>
+          <th>回合盈虧</th>
+          <th>總盈虧</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p style="margin-top:10px;font-weight:bold;">
+      全體總盈虧（歷史累計）：<span id="grandTotalProfit">+0</span>
+    </p>
+  </div>
+
+  <div class="reset-button">
+    <button onclick="clearStorage()">清除儲存資料</button>
+  </div>
+
+  <script>
+    let players = JSON.parse(localStorage.getItem('players')) || [];
+    let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
+    let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
+    // 全局單次買入籌碼
+    let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
+
+    // 升級補丁：把舊資料補上 active 等欄位，避免出錯
+    (function migrateStorage() {
+      try {
+        players = Array.isArray(players) ? players : [];
+        rounds = Array.isArray(rounds) ? rounds : [];
+        if (typeof multiplier !== 'number' || isNaN(multiplier)) multiplier = 100;
+      } catch (e) {
+        players = []; rounds = []; multiplier = 100;
+      }
+      let changed = false;
+      players = players.map(p => {
+        const np = Object.assign({
+          name: '',
+          buyIn: buyInAmount,
+          tokens: 1,
+          remainingInput: '',
+          remaining: 0,
+          profit: 0,
+          roundProfits: [],
+          active: true
+        }, p);
+        if (p.active === undefined) changed = true;
+        if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
+        np.buyIn = Number(np.buyIn) || 0;
+        np.tokens = Number(np.tokens) || 0;
+        np.remaining = Number(np.remaining) || 0;
+        np.profit = Number(np.profit) || 0;
+        return np;
+      });
+      if (changed) localStorage.setItem('players', JSON.stringify(players));
+    })();
+
+    function updateMultiplier(value) {
+      multiplier = parseFloat(value) || 100;
+      localStorage.setItem('multiplier', multiplier);
+      players.forEach((_, i) => updateProfit(i));
+    }
+
+    // 更新全局單次買入籌碼，並同步所有在場玩家
+    function updateBuyInAmount(value) {
+      buyInAmount = parseInt(value) || 0;
+      localStorage.setItem('buyInAmount', buyInAmount);
+      // 依照目前代幣數量同步在場玩家的 buyIn
+      players.forEach((p, i) => {
+        if (p.active) {
+          p.buyIn = buyInAmount * (p.tokens || 0);
+          updateProfit(i);
+        }
+      });
+      saveToStorage();
+      render();
+    }
+
+    function addPlayer() {
+      const player = {
+        name: '',
+        buyIn: buyInAmount,
+        tokens: 1,
+        remainingInput: '',
+        remaining: 0,
+        profit: 0,
+        roundProfits: [],
+        active: true
+      };
+      players.push(player);
+      saveToStorage();
+      render();
+    }
+
+    function removePlayer(index) {
+      players.splice(index, 1);
+      saveToStorage();
+      render();
+    }
+
+    function buyIn(index) {
+      if (!players[index].active) return; // 退場者不可操作
+      players[index].buyIn += buyInAmount;
+      players[index].tokens += 1;
+      updateProfit(index);
+      saveToStorage();
+      render();
+    }
+
+    function decreaseBuyIn(index) {
+      if (!players[index].active) return; // 退場者不可操作
+      if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
+        players[index].buyIn -= buyInAmount;
+        players[index].tokens -= 1;
+        updateProfit(index);
+        saveToStorage();
+        render();
+      }
+    }
+
+    function updateRemaining(index, value) {
+      if (!players[index].active) return; // 退場者不可輸入
+      players[index].remainingInput = value;
+      const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
+      players[index].remaining = numericValue;
+      updateProfit(index);
+      saveToStorage();
+    }
+
+    function updateProfit(index) {
+      const p = players[index];
+      // 退場者當局一律 +0（以 0-0 計算）
+      const remaining = p.active ? p.remaining : 0;
+      const buyIn = p.active ? p.buyIn : 0;
+      p.profit = (remaining - buyIn) / multiplier;
+
+      updateSummary();
+      const profitElement = document.getElementById(`profit-${index}`);
+      if (profitElement) {
+        profitElement.textContent = formatProfit(p.profit);
+      }
+    }
+
+    function formatProfit(profit) {
+      if (profit === 0) return '+0';
+      return profit > 0 ? `+${Math.round(profit)}` : `${Math.round(profit)}`;
+    }
+
+    function updateName(index, value) {
+      players[index].name = value;
+      saveToStorage();
+    }
+
+    // 退場/復出切換
+    function toggleActive(index) {
+      const p = players[index];
+      p.active = !p.active;
+      if (!p.active) {
+        // 標記退場：當局數據全部歸 0，之後每局記 +0
+        p.buyIn = 0;
+        p.tokens = 0;
+        p.remainingInput = '';
+        p.remaining = 0;
+        p.profit = 0;
+      } else {
+        // 標記復出：給預設起始
+        p.buyIn = buyInAmount;
+        p.tokens = 1;
+        p.remainingInput = '';
+        p.remaining = 0;
+        p.profit = 0;
+      }
+      saveToStorage();
+      render();
+      updateSummary();
+    }
+
+    function saveRound() {
+      const roundData = players.map(player => {
+        // 退場者此局固定記 0，總盈虧自然保持不變
+        const roundProfit = player.active ? player.profit : 0;
+        player.roundProfits.push(roundProfit);
+        return {
+          name: player.name,
+          roundProfits: player.roundProfits,
+          totalProfit: player.roundProfits.reduce((acc, profit) => acc + profit, 0)
+        };
+      });
+
+      rounds.push(roundData);
+      saveToStorage();
+      resetCurrentRound();
+      renderRoundSummary();
+    }
+
+    function resetCurrentRound() {
+      players.forEach(player => {
+        if (player.active) {
+          player.buyIn = buyInAmount;
+          player.tokens = 1;
+        } else {
+          // 退場者在新回合維持不參與（當局 +0）
+          player.buyIn = 0;
+          player.tokens = 0;
+        }
+        player.remainingInput = '';
+        player.remaining = 0;
+        player.profit = 0;
+      });
+      saveToStorage();
+      render();
+    }
+
+    function clearStorage() {
+      localStorage.clear();
+      players = [];
+      rounds = [];
+      multiplier = 100;
+      buyInAmount = 20000;
+      document.getElementById('multiplierInput').value = multiplier;
+      document.getElementById('buyInAmountInput').value = buyInAmount;
+      addPlayer();
+      render();
+      renderRoundSummary();
+      updateSummary();
+    }
+
+    function render() {
+      document.getElementById('multiplierInput').value = multiplier;
+      const buyInInput = document.getElementById('buyInAmountInput');
+      if (buyInInput) buyInInput.value = buyInAmount;
+
+      const container = document.getElementById('players');
+      container.innerHTML = '';
+
+      players.forEach((player, index) => {
+        const div = document.createElement('div');
+        div.className = 'player' + (player.active ? '' : ' inactive');
+
+        const inputId = `input-${index}`;
+        const profitId = `profit-${index}`;
+
+        div.innerHTML = `
+          <button class="remove-button" onclick="removePlayer(${index})">×</button>
+          <p>
+            <label>玩家名稱：</label>
+            <input type="text" value="${player.name}" oninput="updateName(${index}, this.value)" placeholder="請輸入玩家名稱" />
+            ${player.active ? '' : '<span class="tag">已退場</span>'}
+          </p>
+          <p>買入籌碼：${player.buyIn}</p>
+          <p>代幣數量：${player.tokens}</p>
+          <button onclick="buyIn(${index})" ${!player.active ? 'disabled' : ''}>買入 (${buyInAmount}籌碼 + 1代幣)</button>
+          <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (${buyInAmount}籌碼 - 1代幣)</button>
+          <button onclick="toggleActive(${index})">${player.active ? '標記退場' : '標記復出'}</button><br><br>
+          <label>手動輸入剩餘籌碼：</label>
+          <input id="${inputId}" type="text" value="${player.remainingInput}" oninput="updateRemaining(${index}, this.value)" ${!player.active ? 'disabled' : ''} />
+          <p>盈虧：<span id="${profitId}">${formatProfit(player.profit)}</span></p>
+        `;
+
+        container.appendChild(div);
+      });
+    }
+
+    function renderRoundSummary() {
+      const tableBody = document.getElementById('roundsTable').getElementsByTagName('tbody')[0];
+      tableBody.innerHTML = '';
+
+      players.forEach(player => {
+        const roundProfits = player.roundProfits.map(profit => formatProfit(profit)).join('');
+        const totalProfit = Math.round(player.roundProfits.reduce((acc, profit) => acc + profit, 0));
+        const row = tableBody.insertRow();
+        row.innerHTML = `
+          <td>${player.name}</td>
+          <td>${roundProfits}</td>
+          <td>${totalProfit}</td>
+        `;
+      });
+
+      // 更新全體總盈虧
+      updateGrandTotal();
+    }
+
+    // 計算全體總盈虧（歷史累計）
+    function updateGrandTotal() {
+      const grand = players.reduce((acc, p) => {
+        const sumP = p.roundProfits.reduce((a, b) => a + b, 0);
+        return acc + sumP;
+      }, 0);
+      const el = document.getElementById('grandTotalProfit');
+      if (el) el.textContent = formatProfit(grand);
+    }
+
+    function updateSummary() {
+      let totalBuyIn = 0;
+      let totalRemaining = 0;
+
+      players.forEach(player => {
+        totalBuyIn += player.buyIn;
+        totalRemaining += player.remaining;
+      });
+
+      document.getElementById('totalBuyIn').textContent = totalBuyIn;
+      document.getElementById('totalRemaining').textContent = totalRemaining;
+    }
+
+    function saveToStorage() {
+      localStorage.setItem('players', JSON.stringify(players));
+      localStorage.setItem('rounds', JSON.stringify(rounds));
+      localStorage.setItem('multiplier', multiplier);
+      localStorage.setItem('buyInAmount', buyInAmount);
+    }
+
+    // 匯出 Excel：玩家名稱 + 歷史總盈虧
+    function exportExcel() {
+      if (typeof XLSX === 'undefined') {
+        alert('XLSX 函式庫尚未載入，請檢查網路或 CDN。');
+        return;
+      }
+
+      const headers = ["玩家名稱", "總盈虧"];
+
+      const data = players.map(p => {
+        const total = Math.round(
+          p.roundProfits.reduce((a, b) => a + b, 0)
+        );
+        return [p.name || '', total];
+      });
+
+      const worksheetData = [headers, ...data];
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+
+      // 欄寬稍微調整好看一點
+      worksheet['!cols'] = [
+        { wch: 20 }, // 玩家名稱
+        { wch: 10 }  // 總盈虧
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "總盈虧");
+
+      XLSX.writeFile(workbook, "poker_total_profit.xlsx");
+    }
+
+    if (players.length === 0) addPlayer();
+    render();
+    renderRoundSummary();
+    updateSummary();
   </script>
 </body>
 </html>
+
 
 
