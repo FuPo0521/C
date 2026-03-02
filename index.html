@@ -6,257 +6,326 @@
   <title>德州撲克籌碼追蹤器</title>
   <style>
   :root{
-  --bg: #f6f8fb;
-  --panel: #ffffff;
-  --panel-soft: #f1f4f9;
-  --card: #ffffff;
-  --card-border: #e4e8f0;
+    --bg: #f6f8fb;
+    --panel: #ffffff;
+    --panel-soft: #f1f4f9;
+    --card: #ffffff;
+    --card-border: #e4e8f0;
 
-  --text: #1e293b;
-  --muted: #64748b;
+    --text: #1e293b;
+    --muted: #64748b;
 
-  --accent: #3b82f6;
-  --accent-soft: #e0edff;
+    --accent: #3b82f6;
+    --accent-soft: #e0edff;
 
-  --success: #10b981;
-  --success-soft: #e7f9f2;
+    --success: #10b981;
+    --success-soft: #e7f9f2;
 
-  --warning: #f59e0b;
-  --warning-soft: #fff4df;
+    --warning: #f59e0b;
+    --warning-soft: #fff4df;
 
-  --danger: #ef4444;
-  --danger-soft: #ffe8e8;
+    --danger: #ef4444;
+    --danger-soft: #ffe8e8;
 
-  --shadow: 0 10px 25px rgba(0,0,0,.06);
-  --shadow-soft: 0 6px 18px rgba(0,0,0,.05);
+    --shadow: 0 10px 25px rgba(0,0,0,.06);
+    --shadow-soft: 0 6px 18px rgba(0,0,0,.05);
 
-  --radius: 16px;
-  --radius-sm: 12px;
+    --radius: 16px;
+    --radius-sm: 12px;
 
-  --ui-scale: 1.06;
-}
+    --ui-scale: 1.06;
+  }
 
-*{ box-sizing:border-box; }
+  *{ box-sizing:border-box; }
 
-body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  padding: 30px 20px 50px;
-  font-size: calc(16px * var(--ui-scale));
-}
+  body{
+    margin:0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 30px 20px 50px;
+    font-size: calc(16px * var(--ui-scale));
+  }
 
-body > *{
-  max-width: 1100px;
-  margin-left:auto;
-  margin-right:auto;
-}
+  body > *{
+    max-width: 1100px;
+    margin-left:auto;
+    margin-right:auto;
+  }
 
-h1{
-  margin-bottom:18px;
-  font-size: calc(28px * var(--ui-scale));
-  font-weight:700;
-  letter-spacing:.5px;
-}
+  h1{
+    margin-bottom:18px;
+    font-size: calc(28px * var(--ui-scale));
+    font-weight:700;
+    letter-spacing:.5px;
+  }
 
-/* 控制列 */
-.controls{
-  background: var(--panel);
-  border:1px solid var(--card-border);
-  border-radius: var(--radius);
-  padding:16px;
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  align-items:center;
-  box-shadow: var(--shadow-soft);
-  margin-bottom:18px;
-}
+  /* 控制列 */
+  .controls{
+    background: var(--panel);
+    border:1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding:16px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    align-items:center;
+    box-shadow: var(--shadow-soft);
+    margin-bottom:18px;
+  }
 
-.controls label{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  font-size: calc(15px * var(--ui-scale));
-  color: var(--muted);
-}
+  .controls label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size: calc(15px * var(--ui-scale));
+    color: var(--muted);
+  }
 
-/* 按鈕 */
-button{
-  font-size: calc(15px * var(--ui-scale));
-  padding: 11px 16px;
-  border-radius: 12px;
-  border:1px solid var(--card-border);
-  background: var(--panel-soft);
-  cursor:pointer;
-  transition: all .15s ease;
-  font-weight:600;
-  box-shadow: 0 3px 8px rgba(0,0,0,.05);
-}
+  /* 按鈕 */
+  button{
+    font-size: calc(15px * var(--ui-scale));
+    padding: 11px 16px;
+    border-radius: 12px;
+    border:1px solid var(--card-border);
+    background: var(--panel-soft);
+    cursor:pointer;
+    transition: all .15s ease;
+    font-weight:600;
+    box-shadow: 0 3px 8px rgba(0,0,0,.05);
+  }
 
-button:hover{
-  transform: translateY(-1px);
-  background:#e9eef7;
-}
+  button:hover{
+    transform: translateY(-1px);
+    background:#e9eef7;
+  }
 
-button:disabled{
-  opacity:.5;
-  cursor:not-allowed;
-  transform:none;
-}
+  button:disabled{
+    opacity:.5;
+    cursor:not-allowed;
+    transform:none;
+  }
 
-/* 玩家區 */
-.player-container{
-  display:grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap:16px;
-}
+  /* 玩家區 */
+  .player-container{
+    display:grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap:16px;
+  }
 
-.player{
-  grid-column: span 6;
-  background: var(--card);
-  border:1px solid var(--card-border);
-  border-radius: var(--radius);
-  padding:16px;
-  box-shadow: var(--shadow);
-  position:relative;
-  transition: all .15s ease;
-}
+  .player{
+    grid-column: span 6;
+    background: var(--card);
+    border:1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding:16px;
+    box-shadow: var(--shadow);
+    position:relative;
+    transition: all .15s ease;
+  }
 
-.player:hover{
-  transform: translateY(-3px);
-}
+  .player:hover{ transform: translateY(-3px); }
+  .player.inactive{ opacity:.65; }
 
-.player.inactive{
-  opacity:.65;
-}
+  .player p{
+    margin:8px 0;
+    color: var(--muted);
+  }
 
-.player p{
-  margin:8px 0;
-  color: var(--muted);
-}
+  .player p:last-child{
+    font-weight:700;
+    color: var(--text);
+  }
 
-.player p:last-child{
-  font-weight:700;
-  color: var(--text);
-}
+  /* 玩家按鈕顏色區分 */
+  .player button:nth-of-type(1){
+    background: var(--success-soft);
+    border-color:#c6f3e4;
+  }
+  .player button:nth-of-type(2){
+    background: var(--warning-soft);
+    border-color:#ffe1a6;
+  }
+  .player button:nth-of-type(3){
+    background:#eef2f8;
+  }
 
-/* 玩家按鈕顏色區分 */
-.player button:nth-of-type(1){
-  background: var(--success-soft);
-  border-color:#c6f3e4;
-}
-.player button:nth-of-type(2){
-  background: var(--warning-soft);
-  border-color:#ffe1a6;
-}
-.player button:nth-of-type(3){
-  background:#eef2f8;
-}
+  /* 移除按鈕 */
+  .remove-button{
+    position:absolute;
+    top:6px;
+    right:6px;
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    background: var(--danger-soft);
+    border:1px solid #ffcaca;
+    font-size:12px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    cursor:pointer;
+  }
 
-/* 移除按鈕 */
-.remove-button{
-  position:absolute;
-  top:6px;          /* 更靠上 */
-  right:6px;        /* 更靠右 */
-  width:22px;       /* 更小 */
-  height:22px;
-  border-radius:50%;
-  background: var(--danger-soft);
-  border:1px solid #ffcaca;
-  font-size:12px;   /* 叉叉字變小 */
-  line-height:1;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  padding:0;
-  cursor:pointer;
-}
+  .remove-button:hover{ background:#ffd6d6; }
 
-.remove-button:hover{
-  background:#ffd6d6;
-}
+  /* 輸入框 */
+  input[type="number"],
+  input[type="text"]{
+    font-size: calc(15px * var(--ui-scale));
+    padding:10px 12px;
+    border-radius: 10px;
+    border:1px solid var(--card-border);
+    background:white;
+    outline:none;
+    transition:.15s;
+  }
 
-/* 輸入框 */
-input[type="number"],
-input[type="text"]{
-  font-size: calc(15px * var(--ui-scale));
-  padding:10px 12px;
-  border-radius: 10px;
-  border:1px solid var(--card-border);
-  background:white;
-  outline:none;
-  transition:.15s;
-}
+  input:focus{
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
 
-input:focus{
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
+  input[disabled]{ background:#f1f5f9; }
 
-input[disabled]{
-  background:#f1f5f9;
-}
+  /* 總覽 */
+  .summary{
+    background: var(--panel);
+    border:1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding:14px 16px;
+    margin-top:16px;
+    box-shadow: var(--shadow-soft);
+    font-weight:600;
+  }
 
-/* 總覽 */
-.summary{
-  background: var(--panel);
-  border:1px solid var(--card-border);
-  border-radius: var(--radius);
-  padding:14px 16px;
-  margin-top:16px;
-  box-shadow: var(--shadow-soft);
-  font-weight:600;
-}
+  /* 回合表格 */
+  .round-summary{
+    margin-top:20px;
+    background: var(--panel);
+    border:1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding:16px;
+    box-shadow: var(--shadow-soft);
+  }
 
-/* 回合表格 */
-.round-summary{
-  margin-top:20px;
-  background: var(--panel);
-  border:1px solid var(--card-border);
-  border-radius: var(--radius);
-  padding:16px;
-  box-shadow: var(--shadow-soft);
-}
+  .round-summary table{
+    width:100%;
+    border-collapse: collapse;
+    margin-top:10px;
+  }
 
-.round-summary table{
-  width:100%;
-  border-collapse: collapse;
-  margin-top:10px;
-}
+  .round-summary th,
+  .round-summary td{
+    padding:12px;
+    border:1px solid var(--card-border);
+    font-size: calc(15px * var(--ui-scale));
+    text-align:center;
+  }
 
-.round-summary th,
-.round-summary td{
-  padding:12px;
-  border:1px solid var(--card-border);
-  font-size: calc(15px * var(--ui-scale));
-}
+  .round-summary th{
+    background:#f3f6fb;
+    font-weight:700;
+  }
 
-.round-summary th{
-  background:#f3f6fb;
-  font-weight:700;
-}
+  .round-summary tr:nth-child(even){ background:#fafcff; }
 
-.round-summary tr:nth-child(even){
-  background:#fafcff;
-}
+  #grandTotalProfit{
+    display:inline-block;
+    padding:4px 10px;
+    border-radius:999px;
+    background: var(--accent-soft);
+    border:1px solid #cfe3ff;
+  }
 
-#grandTotalProfit{
-  display:inline-block;
-  padding:4px 10px;
-  border-radius:999px;
-  background: var(--accent-soft);
-  border:1px solid #cfe3ff;
-}
+  /* ✅ 金額計算表 */
+  .expense-summary{
+    margin-top:16px;
+    background: var(--panel);
+    border:1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding:16px;
+    box-shadow: var(--shadow-soft);
+  }
 
-/* 手機版 */
-@media (max-width: 980px){
-  .player{ grid-column: span 12; }
-  button{ width:100%; }
-  .controls{ flex-direction:column; align-items:stretch; }
-}
+  .expense-summary h3{
+    margin: 0 0 10px;
+    font-size: calc(16px * var(--ui-scale));
+  }
+
+  .expense-summary table{
+    width:100%;
+    border-collapse: collapse;
+    margin-top:10px;
+  }
+
+  .expense-summary th,
+  .expense-summary td{
+    padding:10px;
+    border:1px solid var(--card-border);
+    font-size: calc(14px * var(--ui-scale));
+    text-align:center;
+    vertical-align: middle;
+  }
+
+  .expense-summary th{
+    background:#f3f6fb;
+    font-weight:700;
+  }
+
+  .expense-summary tr:nth-child(even){ background:#fafcff; }
+
+  .pill{
+    display:inline-block;
+    padding:3px 10px;
+    border-radius:999px;
+    background:#f1f4f9;
+    border:1px solid var(--card-border);
+    min-width: 70px;
+    font-weight:700;
+  }
+
+  .expense-meta{
+    margin-top:10px;
+    color: var(--muted);
+    font-weight:700;
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    align-items:center;
+  }
+
+  .warn{
+    color:#b45309;
+    background:#fff4df;
+    border:1px solid #ffe1a6;
+    padding:6px 10px;
+    border-radius: 999px;
+    font-weight:800;
+  }
+
+  /* tag */
+  .tag{
+    display:inline-block;
+    margin-left:8px;
+    padding:2px 6px;
+    border:1px solid #bbb;
+    border-radius:999px;
+    font-size:12px;
+    color:#555;
+    background:#fff;
+  }
+
+  /* 手機版 */
+  @media (max-width: 980px){
+    .player{ grid-column: span 12; }
+    button{ width:100%; }
+    .controls{ flex-direction:column; align-items:stretch; }
+  }
   </style>
+
   <!-- 匯出 Excel 用的 SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -269,11 +338,9 @@ input[disabled]{
     <label>籌碼倍率：
       <input type="number" id="multiplierInput" value="100" onchange="updateMultiplier(this.value)" />
     </label>
-    <!-- 全局單次買入籌碼設定 -->
     <label>單次買入籌碼：
       <input type="number" id="buyInAmountInput" value="20000" onchange="updateBuyInAmount(this.value)" />
     </label>
-    <!-- 匯出 Excel 按鈕（只匯出玩家名稱＋總盈虧） -->
     <button onclick="exportExcel()">匯出總盈虧 Excel</button>
   </div>
 
@@ -301,7 +368,34 @@ input[disabled]{
     </p>
   </div>
 
-  <div class="reset-button">
+  <!-- ✅ 新增：金額計算 -->
+  <div class="expense-summary">
+    <h3>金額計算</h3>
+    <table id="expenseTable">
+      <thead>
+        <tr>
+          <th>玩家名稱</th>
+          <th>晚餐</th>
+          <th>飲料</th>
+          <th>代墊</th>
+          <th>三欄合計</th>
+          <th>總盈虧</th>
+          <th>最後應收付</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="expense-meta">
+      <div>晚餐合計：<span id="sumDinner" class="pill">0</span></div>
+      <div>飲料合計：<span id="sumDrink" class="pill">0</span></div>
+      <div>代墊合計：<span id="sumOther" class="pill">0</span></div>
+      <div>三欄總加總：<span id="sumAllExpense" class="pill">0</span></div>
+      <div id="expenseWarn" class="warn" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="reset-button" style="margin-top:20px;">
     <button onclick="clearStorage()">清除儲存資料</button>
   </div>
 
@@ -309,10 +403,9 @@ input[disabled]{
     let players = JSON.parse(localStorage.getItem('players')) || [];
     let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
     let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
-    // 全局單次買入籌碼
     let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
 
-    // 升級補丁：把舊資料補上 active / buyInCounts 等欄位，避免出錯
+    // 升級補丁：把舊資料補上 active / buyInCounts / expensesAutoSign 等欄位，避免出錯
     (function migrateStorage() {
       try {
         players = Array.isArray(players) ? players : [];
@@ -321,7 +414,7 @@ input[disabled]{
       } catch (e) {
         players = []; rounds = []; multiplier = 100;
       }
-      let changed = false;
+
       players = players.map(p => {
         const np = Object.assign({
           name: '',
@@ -331,32 +424,43 @@ input[disabled]{
           remaining: 0,
           profit: 0,
           roundProfits: [],
-          buyInCounts: [],   // ✅ 新增：每回合買入次數（用 tokens 記錄）
-          active: true
+          buyInCounts: [],
+          active: true,
+          // dinner/drink：輸入正數但存負值；other(代墊)：存正值
+          expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
         }, p);
-        if (p.active === undefined) changed = true;
+
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         if (!Array.isArray(np.buyInCounts)) np.buyInCounts = [];
+        if (!np.expensesAutoSign || typeof np.expensesAutoSign !== 'object') {
+          np.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
+        }
+
         np.buyIn = Number(np.buyIn) || 0;
         np.tokens = Number(np.tokens) || 0;
         np.remaining = Number(np.remaining) || 0;
         np.profit = Number(np.profit) || 0;
+
+        np.expensesAutoSign.dinner = Number(np.expensesAutoSign.dinner) || 0;
+        np.expensesAutoSign.drink  = Number(np.expensesAutoSign.drink)  || 0;
+        np.expensesAutoSign.other  = Number(np.expensesAutoSign.other)  || 0;
+
         return np;
       });
-      if (changed) localStorage.setItem('players', JSON.stringify(players));
+
+      localStorage.setItem('players', JSON.stringify(players));
     })();
 
     function updateMultiplier(value) {
       multiplier = parseFloat(value) || 100;
       localStorage.setItem('multiplier', multiplier);
       players.forEach((_, i) => updateProfit(i));
+      recalcExpenseSummary();
     }
 
-    // 更新全局單次買入籌碼，並同步所有在場玩家
     function updateBuyInAmount(value) {
       buyInAmount = parseInt(value) || 0;
       localStorage.setItem('buyInAmount', buyInAmount);
-      // 依照目前代幣數量同步在場玩家的 buyIn
       players.forEach((p, i) => {
         if (p.active) {
           p.buyIn = buyInAmount * (p.tokens || 0);
@@ -376,8 +480,9 @@ input[disabled]{
         remaining: 0,
         profit: 0,
         roundProfits: [],
-        buyInCounts: [], // ✅
-        active: true
+        buyInCounts: [],
+        active: true,
+        expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
       };
       players.push(player);
       saveToStorage();
@@ -391,7 +496,7 @@ input[disabled]{
     }
 
     function buyIn(index) {
-      if (!players[index].active) return; // 退場者不可操作
+      if (!players[index].active) return;
       players[index].buyIn += buyInAmount;
       players[index].tokens += 1;
       updateProfit(index);
@@ -400,7 +505,7 @@ input[disabled]{
     }
 
     function decreaseBuyIn(index) {
-      if (!players[index].active) return; // 退場者不可操作
+      if (!players[index].active) return;
       if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
         players[index].buyIn -= buyInAmount;
         players[index].tokens -= 1;
@@ -411,7 +516,7 @@ input[disabled]{
     }
 
     function updateRemaining(index, value) {
-      if (!players[index].active) return; // 退場者不可輸入
+      if (!players[index].active) return;
       players[index].remainingInput = value;
       const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
       players[index].remaining = numericValue;
@@ -421,16 +526,15 @@ input[disabled]{
 
     function updateProfit(index) {
       const p = players[index];
-      // 退場者當局一律 +0（以 0-0 計算）
       const remaining = p.active ? p.remaining : 0;
       const buyIn = p.active ? p.buyIn : 0;
       p.profit = (remaining - buyIn) / multiplier;
 
       updateSummary();
       const profitElement = document.getElementById(`profit-${index}`);
-      if (profitElement) {
-        profitElement.textContent = formatProfit(p.profit);
-      }
+      if (profitElement) profitElement.textContent = formatProfit(p.profit);
+
+      recalcExpenseSummary();
     }
 
     function formatProfit(profit) {
@@ -441,21 +545,20 @@ input[disabled]{
     function updateName(index, value) {
       players[index].name = value;
       saveToStorage();
+      // 重新渲染金額表，讓玩家名稱同步（不影響輸入體驗，因為不是在那張表打字）
+      renderExpenseTable();
     }
 
-    // 退場/復出切換
     function toggleActive(index) {
       const p = players[index];
       p.active = !p.active;
       if (!p.active) {
-        // 標記退場：當局數據全部歸 0，之後每局記 +0
         p.buyIn = 0;
         p.tokens = 0;
         p.remainingInput = '';
         p.remaining = 0;
         p.profit = 0;
       } else {
-        // 標記復出：給預設起始
         p.buyIn = buyInAmount;
         p.tokens = 1;
         p.remainingInput = '';
@@ -465,15 +568,14 @@ input[disabled]{
       saveToStorage();
       render();
       updateSummary();
+      recalcExpenseSummary();
     }
 
     function saveRound() {
       const roundData = players.map(player => {
-        // 退場者此局固定記 0，總盈虧自然保持不變
         const roundProfit = player.active ? player.profit : 0;
         player.roundProfits.push(roundProfit);
 
-        // ✅ 記錄此回合買入次數（用 tokens 表示：起始1 + 每次加買 +1；退場者記0）
         const roundBuyInCount = player.active ? (Number(player.tokens) || 0) : 0;
         if (!Array.isArray(player.buyInCounts)) player.buyInCounts = [];
         player.buyInCounts.push(roundBuyInCount);
@@ -491,6 +593,7 @@ input[disabled]{
       saveToStorage();
       resetCurrentRound();
       renderRoundSummary();
+      recalcExpenseSummary();
     }
 
     function resetCurrentRound() {
@@ -499,7 +602,6 @@ input[disabled]{
           player.buyIn = buyInAmount;
           player.tokens = 1;
         } else {
-          // 退場者在新回合維持不參與（當局 +0）
           player.buyIn = 0;
           player.tokens = 0;
         }
@@ -523,6 +625,8 @@ input[disabled]{
       render();
       renderRoundSummary();
       updateSummary();
+      renderExpenseTable();
+      recalcExpenseSummary();
     }
 
     function render() {
@@ -568,6 +672,9 @@ input[disabled]{
 
         container.appendChild(div);
       });
+
+      renderExpenseTable();
+      recalcExpenseSummary();
     }
 
     function renderRoundSummary() {
@@ -588,11 +695,9 @@ input[disabled]{
         `;
       });
 
-      // 更新全體總盈虧
       updateGrandTotal();
     }
 
-    // 計算全體總盈虧（歷史累計）
     function updateGrandTotal() {
       const grand = players.reduce((acc, p) => {
         const sumP = (p.roundProfits || []).reduce((a, b) => a + b, 0);
@@ -622,7 +727,151 @@ input[disabled]{
       localStorage.setItem('buyInAmount', buyInAmount);
     }
 
-    // 匯出 Excel：玩家名稱 + 歷史總盈虧
+    // ✅ 金額計算：只收數字，空白=0
+    function parseUnsignedInt(raw) {
+      const digits = String(raw || '').replace(/[^\d]/g, '');
+      return parseInt(digits || '0', 10);
+    }
+
+    // ✅ dinner/drink：輸入正數但存負值；other：存正值
+    // 重要：這裡不重建表格，只 recalculation，避免手機變成只能輸入一位數
+    function updateExpenseAutoSign(index, field, value) {
+      const p = players[index];
+      if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
+        p.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
+      }
+      const n = parseUnsignedInt(value);
+
+      if (field === 'dinner' || field === 'drink') {
+        p.expensesAutoSign[field] = -n;
+      } else {
+        p.expensesAutoSign[field] = +n;
+      }
+
+      saveToStorage();
+      recalcExpenseSummary();
+    }
+
+    function getTotalProfit(player) {
+      return (player.roundProfits || []).reduce((a, b) => a + b, 0);
+    }
+
+    function formatSigned(n) {
+      const v = Math.round(Number(n) || 0);
+      if (v === 0) return '0';
+      return v > 0 ? `+${v}` : `${v}`;
+    }
+
+    // ✅ 建表：只在玩家增減、render() 時重建（避免打字中一直重建）
+    function renderExpenseTable() {
+      const table = document.getElementById('expenseTable');
+      if (!table) return;
+
+      const tbody = table.getElementsByTagName('tbody')[0];
+      tbody.innerHTML = '';
+
+      players.forEach((p, i) => {
+        const es = p.expensesAutoSign || { dinner: 0, drink: 0, other: 0 };
+        const dinnerShown = Math.abs(Number(es.dinner) || 0);
+        const drinkShown  = Math.abs(Number(es.drink)  || 0);
+        const otherShown  = Math.abs(Number(es.other)  || 0);
+
+        const row = tbody.insertRow();
+        row.innerHTML = `
+          <td>${p.name || ''}</td>
+          <td>
+            <input
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              value="${dinnerShown ? dinnerShown : ''}"
+              oninput="updateExpenseAutoSign(${i}, 'dinner', this.value)"
+              placeholder="0"
+            />
+          </td>
+          <td>
+            <input
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              value="${drinkShown ? drinkShown : ''}"
+              oninput="updateExpenseAutoSign(${i}, 'drink', this.value)"
+              placeholder="0"
+            />
+          </td>
+          <td>
+            <input
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              value="${otherShown ? otherShown : ''}"
+              oninput="updateExpenseAutoSign(${i}, 'other', this.value)"
+              placeholder="0"
+            />
+          </td>
+          <td><span class="pill" id="expSum-${i}">0</span></td>
+          <td><span class="pill" id="totalProfit-${i}">0</span></td>
+          <td><span class="pill" id="finalNet-${i}">+0</span></td>
+        `;
+      });
+    }
+
+    // ✅ 計算更新（不重建 input）
+    function recalcExpenseSummary() {
+      let sumDinner = 0, sumDrink = 0, sumOther = 0;
+
+      players.forEach((p, i) => {
+        const es = p.expensesAutoSign || { dinner: 0, drink: 0, other: 0 };
+        const dinner = Number(es.dinner) || 0; // 負值
+        const drink  = Number(es.drink)  || 0; // 負值
+        const other  = Number(es.other)  || 0; // 正值
+
+        sumDinner += dinner;
+        sumDrink  += drink;
+        sumOther  += other;
+
+        const expSum = dinner + drink + other;
+        const totalProfit = getTotalProfit(p);
+        const finalNet = totalProfit + expSum;
+
+        const expSumEl = document.getElementById(`expSum-${i}`);
+        const totalProfitEl = document.getElementById(`totalProfit-${i}`);
+        const finalNetEl = document.getElementById(`finalNet-${i}`);
+
+        if (expSumEl) expSumEl.textContent = formatSigned(expSum);
+        if (totalProfitEl) totalProfitEl.textContent = formatSigned(totalProfit);
+        if (finalNetEl) finalNetEl.textContent = formatProfit(finalNet);
+      });
+
+      const sumAll = sumDinner + sumDrink + sumOther;
+
+      const elDinner = document.getElementById('sumDinner');
+      const elDrink  = document.getElementById('sumDrink');
+      const elOther  = document.getElementById('sumOther');
+      const elAll    = document.getElementById('sumAllExpense');
+
+      if (elDinner) elDinner.textContent = formatSigned(sumDinner);
+      if (elDrink)  elDrink.textContent  = formatSigned(sumDrink);
+      if (elOther)  elOther.textContent  = formatSigned(sumOther);
+      if (elAll)    elAll.textContent    = formatSigned(sumAll);
+
+      const warn = document.getElementById('expenseWarn');
+      if (warn) {
+        const diff = Math.round(sumAll);
+        if (diff !== 0) {
+          warn.style.display = 'inline-block';
+          warn.textContent = `⚠ 代墊與消費未平衡：差額 ${formatSigned(diff)}（請檢查是否有人漏填）`;
+        } else {
+          warn.style.display = 'none';
+          warn.textContent = '';
+        }
+      }
+    }
+
+    // 匯出 Excel：玩家名稱 + 歷史總盈虧（維持原功能）
     function exportExcel() {
       if (typeof XLSX === 'undefined') {
         alert('XLSX 函式庫尚未載入，請檢查網路或 CDN。');
@@ -641,10 +890,9 @@ input[disabled]{
       const worksheetData = [headers, ...data];
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
-      // 欄寬稍微調整好看一點
       worksheet['!cols'] = [
-        { wch: 20 }, // 玩家名稱
-        { wch: 10 }  // 總盈虧
+        { wch: 20 },
+        { wch: 10 }
       ];
 
       const workbook = XLSX.utils.book_new();
@@ -657,6 +905,8 @@ input[disabled]{
     render();
     renderRoundSummary();
     updateSummary();
+    renderExpenseTable();
+    recalcExpenseSummary();
   </script>
 </body>
 </html>
