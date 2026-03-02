@@ -308,7 +308,6 @@
     background:#fff;
   }
 
-  /* ✅ 房間列 */
   .roombar{
     margin-bottom: 18px;
     background: var(--panel);
@@ -345,7 +344,6 @@
 <body>
   <h1>德州撲克 籌碼與盈虧計算</h1>
 
-  <!-- ✅ 房間同步 -->
   <div class="roombar">
     <div>
       <strong>房間同步：</strong>
@@ -426,14 +424,17 @@
     <button onclick="clearStorage()">清除儲存資料</button>
   </div>
 
-  <!-- ✅ Firebase + Firestore（SCRIPT / module 方式，適合 GitHub Pages） -->
+  <!-- Firebase / Firestore（多人安全 + 防失焦版） -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
     import {
-      getFirestore, doc, setDoc, getDoc, onSnapshot
+      getFirestore,
+      doc, setDoc, getDoc,
+      collection, addDoc, deleteDoc, updateDoc,
+      onSnapshot,
+      serverTimestamp
     } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
-    // === 你的 firebaseConfig ===
     const firebaseConfig = {
       apiKey: "AIzaSyCMz1-sVCCCJ1P0zIHRGj_l2FQ-W_XihSk",
       authDomain: "poker-9da33.firebaseapp.com",
@@ -446,7 +447,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // ========== 原本你的資料 ==========
+    // ========== 本地狀態 ==========
     window.players = JSON.parse(localStorage.getItem('players')) || [];
     window.rounds = JSON.parse(localStorage.getItem('rounds')) || [];
     window.multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
@@ -454,9 +455,13 @@
 
     // ========== 多人同步狀態 ==========
     let currentRoomId = null;
-    let unsubRoom = null;
+    let unsubRoomDoc = null;
+    let unsubPlayers = null;
+    let unsubRounds = null;
     let applyingRemote = false;
-    let saveTimer = null;
+
+    // 單玩家寫入 debounce
+    const playerWriteTimers = new Map();
 
     const roomLabelEl = document.getElementById('roomLabel');
     const syncStatusEl = document.getElementById('syncStatus');
@@ -467,6 +472,13 @@
       if (roomLabelEl) roomLabelEl.textContent = currentRoomId ? currentRoomId : '未加入';
     }
 
+    function saveToStorage() {
+      localStorage.setItem('players', JSON.stringify(players));
+      localStorage.setItem('rounds', JSON.stringify(rounds));
+      localStorage.setItem('multiplier', multiplier);
+      localStorage.setItem('buyInAmount', buyInAmount);
+    }
+
     function generateRoomId(){
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let out = "";
@@ -474,162 +486,67 @@
       return out;
     }
 
-    function getRoomDocRef(roomId){
-      return doc(db, "pokerRooms", roomId);
+    function uid(){
+      return "p_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
     }
 
-    function snapshotState(){
+    function roomRef(roomId){ return doc(db, "pokerRooms", roomId); }
+    function playersCol(roomId){ return collection(db, "pokerRooms", roomId, "players"); }
+    function playerRef(roomId, playerId){ return doc(db, "pokerRooms", roomId, "players", playerId); }
+    function roundsCol(roomId){ return collection(db, "pokerRooms", roomId, "rounds"); }
+
+    // ========= 防「輸入模式被取消」：focus 記憶/恢復 =========
+    function captureFocusState(){
+      const el = document.activeElement;
+      if (!el) return null;
+      const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA';
+      if (!isInput) return null;
+
       return {
-        players,
-        rounds,
-        multiplier,
-        buyInAmount,
-        updatedAt: Date.now()
+        id: el.id || null,
+        start: typeof el.selectionStart === 'number' ? el.selectionStart : null,
+        end: typeof el.selectionEnd === 'number' ? el.selectionEnd : null
       };
     }
 
-    async function writeRoomNow(){
-      if (!currentRoomId) return;
-      const ref = getRoomDocRef(currentRoomId);
-      const payload = snapshotState();
-      await setDoc(ref, payload, { merge: true });
-    }
+    function restoreFocusState(state){
+      if (!state?.id) return;
+      const el = document.getElementById(state.id);
+      if (!el) return;
 
-    function scheduleWriteRoom(){
-      if (!currentRoomId) return;
-      if (applyingRemote) return;
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(async () => {
-        try{
-          setStatus(`同步中…（${currentRoomId}）`);
-          await writeRoomNow();
-          setStatus(`已同步（${currentRoomId}）`);
-        }catch(e){
-          console.error(e);
-          setStatus(`同步失敗（${currentRoomId}）`);
-        }
-      }, 250); // debounce：避免輸入時一直寫
-    }
-
-    function applyRemoteState(data){
-      if (!data) return;
-      applyingRemote = true;
-      try{
-        // 用遠端覆蓋本地
-        players = Array.isArray(data.players) ? data.players : [];
-        rounds = Array.isArray(data.rounds) ? data.rounds : [];
-        multiplier = Number(data.multiplier) || 100;
-        buyInAmount = Number(data.buyInAmount) || 20000;
-
-        // 存回 localStorage（離線也保留）
-        saveToStorage();
-
-        // 重新渲染
-        render();
-        renderRoundSummary();
-        updateSummary();
-        renderExpenseTable();
-        recalcExpenseSummary();
-      } finally{
-        applyingRemote = false;
+      el.focus({ preventScroll: true });
+      if (typeof state.start === 'number' && typeof state.end === 'number') {
+        try { el.setSelectionRange(state.start, state.end); } catch {}
       }
     }
 
-    function startRoomListener(roomId){
-      const ref = getRoomDocRef(roomId);
-      if (unsubRoom) unsubRoom();
-      unsubRoom = onSnapshot(ref, (snap) => {
-        if (!snap.exists()) return;
-        const data = snap.data();
-        setStatus(`收到同步（${roomId}）`);
-        applyRemoteState(data);
-        setStatus(`已同步（${roomId}）`);
-      }, (err) => {
-        console.error(err);
-        setStatus(`監聽失敗（${roomId}）`);
-      });
-    }
+    // ========= 防遠端更新覆蓋「你正在打字的欄位」 =========
+    // 結構：{ playerId, field }，field 可能是 'name' | 'remaining' | 'expense_dinner' ...
+    let editing = null;
 
-    // === 對外提供按鈕 function ===
-    window.createRoom = async function(){
-      const roomId = generateRoomId();
-      currentRoomId = roomId;
-      setStatus(`建立房間中…（${roomId}）`);
-
-      // 先寫一份當下狀態到房間
-      try{
-        await setDoc(getRoomDocRef(roomId), snapshotState(), { merge: true });
-        // 更新網址，方便分享
-        const url = new URL(location.href);
-        url.searchParams.set('room', roomId);
-        history.replaceState(null, "", url.toString());
-
-        startRoomListener(roomId);
-        setStatus(`已同步（${roomId}）`);
-      }catch(e){
-        console.error(e);
-        setStatus(`建立失敗（${roomId}）`);
-      }
+    window.__setEditing = function(playerId, field, isEditing){
+      if (isEditing) editing = { playerId, field };
+      else if (editing && editing.playerId === playerId && editing.field === field) editing = null;
     };
 
-    window.joinRoom = async function(){
-      const roomId = String(roomInputEl.value || '').trim().toUpperCase();
-      if (!roomId) {
-        alert('請輸入房間代碼');
-        return;
-      }
+    function isEditingField(playerId, field){
+      return editing && editing.playerId === playerId && editing.field === field;
+    }
 
-      currentRoomId = roomId;
-      setStatus(`加入房間中…（${roomId}）`);
-
-      try{
-        const ref = getRoomDocRef(roomId);
-        const snap = await getDoc(ref);
-        if (snap.exists()){
-          applyRemoteState(snap.data());
-        } else {
-          // 房間不存在：用你目前本地狀態建立一個
-          await setDoc(ref, snapshotState(), { merge: true });
-        }
-
-        const url = new URL(location.href);
-        url.searchParams.set('room', roomId);
-        history.replaceState(null, "", url.toString());
-
-        startRoomListener(roomId);
-        setStatus(`已同步（${roomId}）`);
-      }catch(e){
-        console.error(e);
-        setStatus(`加入失敗（${roomId}）`);
-      }
-    };
-
-    window.leaveRoom = function(){
-      if (unsubRoom) unsubRoom();
-      unsubRoom = null;
-      currentRoomId = null;
-
-      const url = new URL(location.href);
-      url.searchParams.delete('room');
-      history.replaceState(null, "", url.toString());
-
-      setStatus('本地模式（localStorage）');
-    };
-
-    // ====== 你的原本功能（小修：每次 saveToStorage 後若在房間就同步） ======
-
-    // 升級補丁：把舊資料補上 active / buyInCounts / expensesAutoSign
-    (function migrateStorage() {
+    // ========== localStorage 資料修補（含 player.id） ==========
+    (function migrateLocal() {
       try {
         players = Array.isArray(players) ? players : [];
         rounds = Array.isArray(rounds) ? rounds : [];
         if (typeof multiplier !== 'number' || isNaN(multiplier)) multiplier = 100;
+        if (typeof buyInAmount !== 'number' || isNaN(buyInAmount)) buyInAmount = 20000;
       } catch (e) {
-        players = []; rounds = []; multiplier = 100;
+        players = []; rounds = []; multiplier = 100; buyInAmount = 20000;
       }
 
       players = players.map(p => {
         const np = Object.assign({
+          id: uid(),
           name: '',
           buyIn: buyInAmount,
           tokens: 1,
@@ -642,6 +559,7 @@
           expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
         }, p);
 
+        if (!np.id) np.id = uid();
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         if (!Array.isArray(np.buyInCounts)) np.buyInCounts = [];
         if (!np.expensesAutoSign || typeof np.expensesAutoSign !== 'object') {
@@ -660,33 +578,283 @@
         return np;
       });
 
-      localStorage.setItem('players', JSON.stringify(players));
+      saveToStorage();
     })();
 
+    // ========== Firestore 同步（多人安全：每個玩家一個 doc） ==========
+    async function ensureRoomDoc(roomId){
+      await setDoc(roomRef(roomId), {
+        multiplier: Number(multiplier) || 100,
+        buyInAmount: Number(buyInAmount) || 20000,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+    }
+
+    function scheduleWritePlayer(playerId, patch){
+      if (!currentRoomId) return;
+      if (applyingRemote) return;
+
+      const key = playerId;
+      const prev = playerWriteTimers.get(key);
+      if (prev && prev.pending) Object.assign(prev.pending, patch);
+      else playerWriteTimers.set(key, { timer: null, pending: Object.assign({}, patch) });
+
+      const state = playerWriteTimers.get(key);
+      clearTimeout(state.timer);
+
+      state.timer = setTimeout(async () => {
+        try{
+          setStatus(`同步中…（${currentRoomId}）`);
+          const toWrite = state.pending || {};
+          state.pending = {};
+          await updateDoc(playerRef(currentRoomId, playerId), Object.assign({}, toWrite, { updatedAt: serverTimestamp() }));
+          setStatus(`已同步（${currentRoomId}）`);
+        }catch(e){
+          console.error(e);
+          setStatus(`同步失敗（${currentRoomId}）`);
+        }
+      }, 250);
+    }
+
+    async function writeRoomSettingsNow(){
+      if (!currentRoomId) return;
+      if (applyingRemote) return;
+      try{
+        setStatus(`同步中…（${currentRoomId}）`);
+        await updateDoc(roomRef(currentRoomId), {
+          multiplier: Number(multiplier) || 100,
+          buyInAmount: Number(buyInAmount) || 20000,
+          updatedAt: serverTimestamp()
+        });
+        setStatus(`已同步（${currentRoomId}）`);
+      }catch(e){
+        console.error(e);
+        setStatus(`同步失敗（${currentRoomId}）`);
+      }
+    }
+
+    function startListeners(roomId){
+      if (unsubRoomDoc) unsubRoomDoc();
+      if (unsubPlayers) unsubPlayers();
+      if (unsubRounds) unsubRounds();
+
+      unsubRoomDoc = onSnapshot(roomRef(roomId), (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() || {};
+
+        applyingRemote = true;
+        try{
+          const m = Number(data.multiplier);
+          const b = Number(data.buyInAmount);
+          if (m && m !== multiplier) {
+            multiplier = m;
+            localStorage.setItem('multiplier', multiplier);
+            document.getElementById('multiplierInput').value = multiplier;
+          }
+          if (b && b !== buyInAmount) {
+            buyInAmount = b;
+            localStorage.setItem('buyInAmount', buyInAmount);
+            document.getElementById('buyInAmountInput').value = buyInAmount;
+          }
+        } finally {
+          applyingRemote = false;
+        }
+
+        // 別在這裡狂算，render() 自己會算需要的部分
+        players.forEach((_, i) => updateProfit(i));
+        render();
+        renderRoundSummary();
+        updateSummary();
+        renderExpenseTable();
+        recalcExpenseSummary();
+        setStatus(`已同步（${roomId}）`);
+      });
+
+      unsubPlayers = onSnapshot(playersCol(roomId), (qs) => {
+        const focusState = captureFocusState();
+
+        applyingRemote = true;
+        try{
+          const existingById = new Map(players.map(p => [p.id, p]));
+          const remotePlayers = [];
+
+          qs.forEach((d) => {
+            const p = d.data() || {};
+            const id = d.id;
+            const base = Object.assign({
+              id,
+              name: '',
+              buyIn: 0,
+              tokens: 0,
+              remainingInput: '',
+              remaining: 0,
+              profit: 0,
+              roundProfits: [],
+              buyInCounts: [],
+              active: true,
+              expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
+            }, p, { id });
+
+            // ✅ 如果本地正在編輯該欄位，就不要用遠端覆蓋該欄位（避免游標跳/鍵盤收）
+            const local = existingById.get(id);
+            if (local) {
+              if (isEditingField(id, 'name')) base.name = local.name;
+              if (isEditingField(id, 'remaining')) {
+                base.remainingInput = local.remainingInput;
+                base.remaining = local.remaining;
+                base.profit = local.profit;
+              }
+              if (isEditingField(id, 'expense_dinner')) base.expensesAutoSign.dinner = local.expensesAutoSign?.dinner ?? base.expensesAutoSign.dinner;
+              if (isEditingField(id, 'expense_drink'))  base.expensesAutoSign.drink  = local.expensesAutoSign?.drink  ?? base.expensesAutoSign.drink;
+              if (isEditingField(id, 'expense_other'))  base.expensesAutoSign.other  = local.expensesAutoSign?.other  ?? base.expensesAutoSign.other;
+            }
+
+            remotePlayers.push(base);
+          });
+
+          players = remotePlayers;
+          saveToStorage();
+        } finally{
+          applyingRemote = false;
+        }
+
+        // 重新算與渲染（render 內會 restore focus）
+        players.forEach((_, i) => updateProfit(i));
+        render();
+        renderRoundSummary();
+        updateSummary();
+        renderExpenseTable();
+        recalcExpenseSummary();
+        restoreFocusState(focusState);
+
+        setStatus(`已同步（${roomId}）`);
+      });
+
+      unsubRounds = onSnapshot(roundsCol(roomId), (qs) => {
+        applyingRemote = true;
+        try{
+          const remoteRounds = [];
+          qs.forEach((d) => remoteRounds.push(d.data() || {}));
+          rounds = remoteRounds;
+          localStorage.setItem('rounds', JSON.stringify(rounds));
+        } finally {
+          applyingRemote = false;
+        }
+        renderRoundSummary();
+        updateGrandTotal();
+      });
+    }
+
+    // ========= 房間：建立 / 加入 / 離開 =========
+    window.createRoom = async function(){
+      const roomId = generateRoomId();
+      currentRoomId = roomId;
+      setStatus(`建立房間中…（${roomId}）`);
+
+      try{
+        await ensureRoomDoc(roomId);
+
+        for (const p of players) {
+          if (!p.id) p.id = uid();
+          await setDoc(playerRef(roomId, p.id), Object.assign({}, p, { updatedAt: serverTimestamp() }), { merge: true });
+        }
+
+        for (const r of rounds) {
+          await addDoc(roundsCol(roomId), Object.assign({}, r, { createdAt: serverTimestamp() }));
+        }
+
+        const url = new URL(location.href);
+        url.searchParams.set('room', roomId);
+        history.replaceState(null, "", url.toString());
+
+        startListeners(roomId);
+        setStatus(`已同步（${roomId}）`);
+      }catch(e){
+        console.error(e);
+        setStatus(`建立失敗（${roomId}）`);
+      }
+    };
+
+    window.joinRoom = async function(){
+      const roomId = String(roomInputEl.value || '').trim().toUpperCase();
+      if (!roomId) {
+        alert('請輸入房間代碼');
+        return;
+      }
+
+      currentRoomId = roomId;
+      setStatus(`加入房間中…（${roomId}）`);
+
+      try{
+        const snap = await getDoc(roomRef(roomId));
+        if (!snap.exists()){
+          await ensureRoomDoc(roomId);
+
+          for (const p of players) {
+            if (!p.id) p.id = uid();
+            await setDoc(playerRef(roomId, p.id), Object.assign({}, p, { updatedAt: serverTimestamp() }), { merge: true });
+          }
+
+          for (const r of rounds) {
+            await addDoc(roundsCol(roomId), Object.assign({}, r, { createdAt: serverTimestamp() }));
+          }
+        }
+
+        const url = new URL(location.href);
+        url.searchParams.set('room', roomId);
+        history.replaceState(null, "", url.toString());
+
+        startListeners(roomId);
+        setStatus(`已同步（${roomId}）`);
+      }catch(e){
+        console.error(e);
+        setStatus(`加入失敗（${roomId}）`);
+      }
+    };
+
+    window.leaveRoom = function(){
+      if (unsubRoomDoc) unsubRoomDoc();
+      if (unsubPlayers) unsubPlayers();
+      if (unsubRounds) unsubRounds();
+      unsubRoomDoc = unsubPlayers = unsubRounds = null;
+      currentRoomId = null;
+
+      const url = new URL(location.href);
+      url.searchParams.delete('room');
+      history.replaceState(null, "", url.toString());
+
+      setStatus('本地模式（localStorage）');
+    };
+
+    // ========= 你的原本功能（只改「寫入方式」與「render 的 id 稳定」） =========
     window.updateMultiplier = function(value) {
       multiplier = parseFloat(value) || 100;
       localStorage.setItem('multiplier', multiplier);
       players.forEach((_, i) => updateProfit(i));
       recalcExpenseSummary();
-      scheduleWriteRoom();
+      writeRoomSettingsNow();
     };
 
     window.updateBuyInAmount = function(value) {
       buyInAmount = parseInt(value) || 0;
       localStorage.setItem('buyInAmount', buyInAmount);
+
       players.forEach((p, i) => {
         if (p.active) {
           p.buyIn = buyInAmount * (p.tokens || 0);
           updateProfit(i);
+          if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn });
         }
       });
+
       saveToStorage();
       render();
-      scheduleWriteRoom();
+      writeRoomSettingsNow();
     };
 
-    window.addPlayer = function() {
+    window.addPlayer = async function() {
       const player = {
+        id: uid(),
         name: '',
         buyIn: buyInAmount,
         tokens: 1,
@@ -701,10 +869,16 @@
       players.push(player);
       saveToStorage();
       render();
-      scheduleWriteRoom();
+
+      if (currentRoomId) {
+        try{
+          await setDoc(playerRef(currentRoomId, player.id), Object.assign({}, player, { updatedAt: serverTimestamp() }), { merge: true });
+        }catch(e){ console.error(e); }
+      }
     };
 
-    window.removePlayer = function(index) {
+    window.removePlayer = async function(index) {
+      const p = players[index];
       players.splice(index, 1);
       saveToStorage();
       render();
@@ -712,39 +886,48 @@
       updateSummary();
       renderExpenseTable();
       recalcExpenseSummary();
-      scheduleWriteRoom();
+
+      if (currentRoomId && p?.id) {
+        try{ await deleteDoc(playerRef(currentRoomId, p.id)); }catch(e){ console.error(e); }
+      }
     };
 
     window.buyIn = function(index) {
-      if (!players[index].active) return;
-      players[index].buyIn += buyInAmount;
-      players[index].tokens += 1;
+      const p = players[index];
+      if (!p.active) return;
+      p.buyIn += buyInAmount;
+      p.tokens += 1;
       updateProfit(index);
       saveToStorage();
       render();
-      scheduleWriteRoom();
+      if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
     };
 
     window.decreaseBuyIn = function(index) {
-      if (!players[index].active) return;
-      if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
-        players[index].buyIn -= buyInAmount;
-        players[index].tokens -= 1;
+      const p = players[index];
+      if (!p.active) return;
+      if (p.buyIn >= buyInAmount && p.tokens > 0) {
+        p.buyIn -= buyInAmount;
+        p.tokens -= 1;
         updateProfit(index);
         saveToStorage();
         render();
-        scheduleWriteRoom();
+        if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
       }
     };
 
     window.updateRemaining = function(index, value) {
-      if (!players[index].active) return;
-      players[index].remainingInput = value;
-      const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
-      players[index].remaining = numericValue;
+      const p = players[index];
+      if (!p.active) return;
+
+      p.remainingInput = value;
+      const numericValue = parseInt(String(value).replace(/[^\d]/g, '')) || 0;
+      p.remaining = numericValue;
+
       updateProfit(index);
       saveToStorage();
-      scheduleWriteRoom();
+
+      if (currentRoomId) scheduleWritePlayer(p.id, { remainingInput: p.remainingInput, remaining: p.remaining, profit: p.profit });
     };
 
     function updateProfit(index) {
@@ -754,9 +937,8 @@
       p.profit = (remaining - buyIn) / multiplier;
 
       updateSummary();
-      const profitElement = document.getElementById(`profit-${index}`);
+      const profitElement = document.getElementById(`profit-${p.id}`);
       if (profitElement) profitElement.textContent = formatProfit(p.profit);
-
       recalcExpenseSummary();
     }
 
@@ -766,16 +948,18 @@
     }
 
     window.updateName = function(index, value) {
-      players[index].name = value;
+      const p = players[index];
+      p.name = value;
       saveToStorage();
       renderExpenseTable();
       renderRoundSummary();
-      scheduleWriteRoom();
+      if (currentRoomId) scheduleWritePlayer(p.id, { name: p.name });
     };
 
     window.toggleActive = function(index) {
       const p = players[index];
       p.active = !p.active;
+
       if (!p.active) {
         p.buyIn = 0;
         p.tokens = 0;
@@ -789,15 +973,24 @@
         p.remaining = 0;
         p.profit = 0;
       }
+
       saveToStorage();
       render();
       updateSummary();
       recalcExpenseSummary();
-      scheduleWriteRoom();
+
+      if (currentRoomId) scheduleWritePlayer(p.id, {
+        active: p.active,
+        buyIn: p.buyIn,
+        tokens: p.tokens,
+        remainingInput: p.remainingInput,
+        remaining: p.remaining,
+        profit: p.profit
+      });
     };
 
-    window.saveRound = function() {
-      const roundData = players.map(player => {
+    window.saveRound = async function() {
+      players.forEach((player) => {
         const roundProfit = player.active ? player.profit : 0;
         player.roundProfits.push(roundProfit);
 
@@ -805,21 +998,35 @@
         if (!Array.isArray(player.buyInCounts)) player.buyInCounts = [];
         player.buyInCounts.push(roundBuyInCount);
 
-        return {
-          name: player.name,
-          roundProfits: player.roundProfits,
-          buyInCounts: player.buyInCounts,
-          totalProfit: player.roundProfits.reduce((acc, profit) => acc + profit, 0),
-          totalBuyInCount: player.buyInCounts.reduce((acc, c) => acc + c, 0)
-        };
+        if (currentRoomId) {
+          scheduleWritePlayer(player.id, {
+            roundProfits: player.roundProfits,
+            buyInCounts: player.buyInCounts
+          });
+        }
       });
 
-      rounds.push(roundData);
+      const roundData = players.map(player => ({
+        playerId: player.id,
+        name: player.name,
+        roundProfits: player.roundProfits,
+        buyInCounts: player.buyInCounts,
+        totalProfit: (player.roundProfits || []).reduce((acc, profit) => acc + profit, 0),
+        totalBuyInCount: (player.buyInCounts || []).reduce((acc, c) => acc + c, 0)
+      }));
+
+      rounds.push({ data: roundData, createdAt: Date.now() });
       saveToStorage();
+
+      if (currentRoomId) {
+        try{
+          await addDoc(roundsCol(currentRoomId), Object.assign({}, { data: roundData }, { createdAt: serverTimestamp() }));
+        }catch(e){ console.error(e); }
+      }
+
       resetCurrentRound();
       renderRoundSummary();
       recalcExpenseSummary();
-      scheduleWriteRoom();
     };
 
     function resetCurrentRound() {
@@ -834,7 +1041,16 @@
         player.remainingInput = '';
         player.remaining = 0;
         player.profit = 0;
+
+        if (currentRoomId) scheduleWritePlayer(player.id, {
+          buyIn: player.buyIn,
+          tokens: player.tokens,
+          remainingInput: player.remainingInput,
+          remaining: player.remaining,
+          profit: player.profit
+        });
       });
+
       saveToStorage();
       render();
     }
@@ -853,10 +1069,42 @@
       updateSummary();
       renderExpenseTable();
       recalcExpenseSummary();
-      scheduleWriteRoom();
     };
 
+    function parseUnsignedInt(raw) {
+      const digits = String(raw || '').replace(/[^\d]/g, '');
+      return parseInt(digits || '0', 10);
+    }
+
+    window.updateExpenseAutoSign = function(index, field, value) {
+      const p = players[index];
+      if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
+        p.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
+      }
+      const n = parseUnsignedInt(value);
+
+      if (field === 'dinner' || field === 'drink') p.expensesAutoSign[field] = -n;
+      else p.expensesAutoSign[field] = +n;
+
+      saveToStorage();
+      recalcExpenseSummary();
+      if (currentRoomId) scheduleWritePlayer(p.id, { expensesAutoSign: p.expensesAutoSign });
+    };
+
+    function getTotalProfit(player) {
+      return (player.roundProfits || []).reduce((a, b) => a + b, 0);
+    }
+
+    function formatSigned(n) {
+      const v = Math.round(Number(n) || 0);
+      if (v === 0) return '0';
+      return v > 0 ? `+${v}` : `${v}`;
+    }
+
+    // ========= render：加入「focus 記憶/恢復」，並讓 input id 用 player.id 穩定 =========
     function render() {
+      const focusState = captureFocusState();
+
       document.getElementById('multiplierInput').value = multiplier;
       const buyInInput = document.getElementById('buyInAmountInput');
       if (buyInInput) buyInInput.value = buyInAmount;
@@ -868,33 +1116,44 @@
         const div = document.createElement('div');
         div.className = 'player' + (player.active ? '' : ' inactive');
 
-        const inputId = `input-${index}`;
-        const profitId = `profit-${index}`;
+        const remainingInputId = `remaining-${player.id}`;
+        const nameInputId = `name-${player.id}`;
+        const profitId = `profit-${player.id}`;
 
         div.innerHTML = `
           <button class="remove-button" onclick="removePlayer(${index})">×</button>
           <p>
             <label>玩家名稱：</label>
-            <input type="text" value="${player.name}" oninput="updateName(${index}, this.value)" placeholder="請輸入玩家名稱" />
+            <input
+              id="${nameInputId}"
+              type="text"
+              value="${player.name || ''}"
+              onfocus="__setEditing('${player.id}','name',true)"
+              onblur="__setEditing('${player.id}','name',false)"
+              oninput="updateName(${index}, this.value)"
+              placeholder="請輸入玩家名稱"
+            />
             ${player.active ? '' : '<span class="tag">已退場</span>'}
           </p>
-          <p>買入籌碼：${player.buyIn}</p>
-          <p>代幣數量：${player.tokens}</p>
+          <p>買入籌碼：${player.buyIn || 0}</p>
+          <p>代幣數量：${player.tokens || 0}</p>
           <button onclick="buyIn(${index})" ${!player.active ? 'disabled' : ''}>買入 (${buyInAmount}籌碼 + 1代幣)</button>
           <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (${buyInAmount}籌碼 - 1代幣)</button>
           <button onclick="toggleActive(${index})">${player.active ? '標記退場' : '標記復出'}</button><br><br>
           <label>手動輸入剩餘籌碼：</label>
           <input
-            id="${inputId}"
+            id="${remainingInputId}"
             type="text"
             inputmode="numeric"
             pattern="[0-9]*"
             autocomplete="off"
-            value="${player.remainingInput}"
+            value="${player.remainingInput || ''}"
+            onfocus="__setEditing('${player.id}','remaining',true)"
+            onblur="__setEditing('${player.id}','remaining',false)"
             oninput="updateRemaining(${index}, this.value)"
             ${!player.active ? 'disabled' : ''}
           />
-          <p>盈虧：<span id="${profitId}">${formatProfit(player.profit)}</span></p>
+          <p>盈虧：<span id="${profitId}">${formatProfit(player.profit || 0)}</span></p>
         `;
 
         container.appendChild(div);
@@ -902,6 +1161,8 @@
 
       renderExpenseTable();
       recalcExpenseSummary();
+
+      restoreFocusState(focusState);
     }
 
     function renderRoundSummary() {
@@ -909,14 +1170,14 @@
       tableBody.innerHTML = '';
 
       players.forEach(player => {
-        const roundProfits = (player.roundProfits || []).map(profit => formatProfit(profit)).join('');
         const totalProfit = Math.round((player.roundProfits || []).reduce((acc, profit) => acc + profit, 0));
         const totalBuyInCount = (player.buyInCounts || []).reduce((acc, c) => acc + c, 0);
+        const roundProfitsShown = (player.roundProfits || []).map(p => formatProfit(p)).join(' / ');
 
         const row = tableBody.insertRow();
         row.innerHTML = `
-          <td>${player.name}</td>
-          <td>${roundProfits}</td>
+          <td>${player.name || ''}</td>
+          <td>${roundProfitsShown}</td>
           <td>${totalProfit}</td>
           <td>${totalBuyInCount}</td>
         `;
@@ -939,52 +1200,12 @@
       let totalRemaining = 0;
 
       players.forEach(player => {
-        totalBuyIn += player.buyIn;
-        totalRemaining += player.remaining;
+        totalBuyIn += Number(player.buyIn) || 0;
+        totalRemaining += Number(player.remaining) || 0;
       });
 
       document.getElementById('totalBuyIn').textContent = totalBuyIn;
       document.getElementById('totalRemaining').textContent = totalRemaining;
-    }
-
-    function saveToStorage() {
-      localStorage.setItem('players', JSON.stringify(players));
-      localStorage.setItem('rounds', JSON.stringify(rounds));
-      localStorage.setItem('multiplier', multiplier);
-      localStorage.setItem('buyInAmount', buyInAmount);
-    }
-
-    function parseUnsignedInt(raw) {
-      const digits = String(raw || '').replace(/[^\d]/g, '');
-      return parseInt(digits || '0', 10);
-    }
-
-    window.updateExpenseAutoSign = function(index, field, value) {
-      const p = players[index];
-      if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
-        p.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
-      }
-      const n = parseUnsignedInt(value);
-
-      if (field === 'dinner' || field === 'drink') {
-        p.expensesAutoSign[field] = -n;
-      } else {
-        p.expensesAutoSign[field] = +n;
-      }
-
-      saveToStorage();
-      recalcExpenseSummary();
-      scheduleWriteRoom();
-    };
-
-    function getTotalProfit(player) {
-      return (player.roundProfits || []).reduce((a, b) => a + b, 0);
-    }
-
-    function formatSigned(n) {
-      const v = Math.round(Number(n) || 0);
-      if (v === 0) return '0';
-      return v > 0 ? `+${v}` : `${v}`;
     }
 
     function renderExpenseTable() {
@@ -1010,6 +1231,8 @@
               pattern="[0-9]*"
               autocomplete="off"
               value="${dinnerShown ? dinnerShown : ''}"
+              onfocus="__setEditing('${p.id}','expense_dinner',true)"
+              onblur="__setEditing('${p.id}','expense_dinner',false)"
               oninput="updateExpenseAutoSign(${i}, 'dinner', this.value)"
               placeholder="0"
             />
@@ -1021,6 +1244,8 @@
               pattern="[0-9]*"
               autocomplete="off"
               value="${drinkShown ? drinkShown : ''}"
+              onfocus="__setEditing('${p.id}','expense_drink',true)"
+              onblur="__setEditing('${p.id}','expense_drink',false)"
               oninput="updateExpenseAutoSign(${i}, 'drink', this.value)"
               placeholder="0"
             />
@@ -1032,6 +1257,8 @@
               pattern="[0-9]*"
               autocomplete="off"
               value="${otherShown ? otherShown : ''}"
+              onfocus="__setEditing('${p.id}','expense_other',true)"
+              onblur="__setEditing('${p.id}','expense_other',false)"
               oninput="updateExpenseAutoSign(${i}, 'other', this.value)"
               placeholder="0"
             />
@@ -1094,7 +1321,7 @@
       }
     }
 
-    // ✅ 匯出 Excel：玩家名稱、總盈虧、晚餐、飲料、代墊、應收付（不含三欄合計）
+    // ✅ 匯出 Excel：玩家名稱、總盈虧、晚餐、飲料、代墊、應收付
     window.exportExcel = function() {
       if (typeof XLSX === 'undefined') {
         alert('XLSX 函式庫尚未載入，請檢查網路或 CDN。');
@@ -1114,36 +1341,23 @@
         const expSum = (Number(es.dinner)||0) + (Number(es.drink)||0) + (Number(es.other)||0);
         const finalNet = Math.round(totalProfit + expSum);
 
-        return [
-          p.name || '',
-          totalProfit,
-          dinnerShown,
-          drinkShown,
-          otherShown,
-          finalNet
-        ];
+        return [p.name || '', totalProfit, dinnerShown, drinkShown, otherShown, finalNet];
       });
 
       const worksheetData = [headers, ...data];
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
       worksheet['!cols'] = [
-        { wch: 18 }, // 玩家名稱
-        { wch: 10 }, // 總盈虧
-        { wch: 10 }, // 晚餐
-        { wch: 10 }, // 飲料
-        { wch: 10 }, // 代墊
-        { wch: 10 }  // 應收付
+        { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }
       ];
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "結算");
-
       XLSX.writeFile(workbook, "poker_settlement.xlsx");
     };
 
     // ====== 啟動 ======
-    if (players.length === 0) addPlayer();
+    if (players.length === 0) await window.addPlayer();
     render();
     renderRoundSummary();
     updateSummary();
@@ -1159,7 +1373,7 @@
         return;
       }
       roomInputEl.value = roomId;
-      joinRoom();
+      window.joinRoom();
     })();
   </script>
 </body>
