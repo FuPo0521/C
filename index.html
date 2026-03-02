@@ -60,7 +60,6 @@
     letter-spacing:.5px;
   }
 
-  /* 控制列 */
   .controls{
     background: var(--panel);
     border:1px solid var(--card-border);
@@ -82,7 +81,6 @@
     color: var(--muted);
   }
 
-  /* 按鈕 */
   button{
     font-size: calc(15px * var(--ui-scale));
     padding: 11px 16px;
@@ -106,7 +104,6 @@
     transform:none;
   }
 
-  /* 玩家區 */
   .player-container{
     display:grid;
     grid-template-columns: repeat(12, 1fr);
@@ -137,7 +134,6 @@
     color: var(--text);
   }
 
-  /* 玩家按鈕顏色區分 */
   .player button:nth-of-type(1){
     background: var(--success-soft);
     border-color:#c6f3e4;
@@ -150,7 +146,6 @@
     background:#eef2f8;
   }
 
-  /* 移除按鈕 */
   .remove-button{
     position:absolute;
     top:6px;
@@ -171,7 +166,6 @@
 
   .remove-button:hover{ background:#ffd6d6; }
 
-  /* 輸入框 */
   input[type="number"],
   input[type="text"]{
     font-size: calc(15px * var(--ui-scale));
@@ -190,7 +184,6 @@
 
   input[disabled]{ background:#f1f5f9; }
 
-  /* 總覽 */
   .summary{
     background: var(--panel);
     border:1px solid var(--card-border);
@@ -201,7 +194,6 @@
     font-weight:600;
   }
 
-  /* 回合表格 */
   .round-summary{
     margin-top:20px;
     background: var(--panel);
@@ -240,7 +232,6 @@
     border:1px solid #cfe3ff;
   }
 
-  /* ✅ 金額計算表 */
   .expense-summary{
     margin-top:16px;
     background: var(--panel);
@@ -306,7 +297,6 @@
     font-weight:800;
   }
 
-  /* tag */
   .tag{
     display:inline-block;
     margin-left:8px;
@@ -318,11 +308,34 @@
     background:#fff;
   }
 
-  /* 手機版 */
+  /* ✅ 房間列 */
+  .roombar{
+    margin-bottom: 18px;
+    background: var(--panel);
+    border:1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding:14px 16px;
+    box-shadow: var(--shadow-soft);
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+  }
+  .roombar strong{ margin-right:6px; }
+  .roombar .status{
+    margin-left:auto;
+    color: var(--muted);
+    font-weight:700;
+  }
+  .roombar input[type="text"]{ width: 220px; }
+
   @media (max-width: 980px){
     .player{ grid-column: span 12; }
     button{ width:100%; }
     .controls{ flex-direction:column; align-items:stretch; }
+    .roombar{ flex-direction:column; align-items:stretch; }
+    .roombar .status{ margin-left:0; }
+    .roombar input[type="text"]{ width:100%; }
   }
   </style>
 
@@ -331,6 +344,21 @@
 </head>
 <body>
   <h1>德州撲克 籌碼與盈虧計算</h1>
+
+  <!-- ✅ 房間同步 -->
+  <div class="roombar">
+    <div>
+      <strong>房間同步：</strong>
+      <span id="roomLabel">未加入</span>
+    </div>
+
+    <input id="roomInput" type="text" placeholder="輸入房間代碼（例如 AB12CD）" autocomplete="off" />
+    <button onclick="createRoom()">建立房間</button>
+    <button onclick="joinRoom()">加入房間</button>
+    <button onclick="leaveRoom()">離開房間</button>
+
+    <div class="status" id="syncStatus">本地模式（localStorage）</div>
+  </div>
 
   <div class="controls">
     <button onclick="addPlayer()">新增玩家</button>
@@ -368,7 +396,6 @@
     </p>
   </div>
 
-  <!-- ✅ 新增：金額計算 -->
   <div class="expense-summary">
     <h3>金額計算</h3>
     <table id="expenseTable">
@@ -399,13 +426,199 @@
     <button onclick="clearStorage()">清除儲存資料</button>
   </div>
 
-  <script>
-    let players = JSON.parse(localStorage.getItem('players')) || [];
-    let rounds = JSON.parse(localStorage.getItem('rounds')) || [];
-    let multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
-    let buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
+  <!-- ✅ Firebase + Firestore（SCRIPT / module 方式，適合 GitHub Pages） -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import {
+      getFirestore, doc, setDoc, getDoc, onSnapshot
+    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
-    // 升級補丁：把舊資料補上 active / buyInCounts / expensesAutoSign 等欄位，避免出錯
+    // === 你的 firebaseConfig ===
+    const firebaseConfig = {
+      apiKey: "AIzaSyCMz1-sVCCCJ1P0zIHRGj_l2FQ-W_XihSk",
+      authDomain: "poker-9da33.firebaseapp.com",
+      projectId: "poker-9da33",
+      storageBucket: "poker-9da33.firebasestorage.app",
+      messagingSenderId: "6507371258",
+      appId: "1:6507371258:web:ac8ccdc7710117bd8ec743"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // ========== 原本你的資料 ==========
+    window.players = JSON.parse(localStorage.getItem('players')) || [];
+    window.rounds = JSON.parse(localStorage.getItem('rounds')) || [];
+    window.multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
+    window.buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
+
+    // ========== 多人同步狀態 ==========
+    let currentRoomId = null;
+    let unsubRoom = null;
+    let applyingRemote = false;
+    let saveTimer = null;
+
+    const roomLabelEl = document.getElementById('roomLabel');
+    const syncStatusEl = document.getElementById('syncStatus');
+    const roomInputEl = document.getElementById('roomInput');
+
+    function setStatus(text){
+      if (syncStatusEl) syncStatusEl.textContent = text;
+      if (roomLabelEl) roomLabelEl.textContent = currentRoomId ? currentRoomId : '未加入';
+    }
+
+    function generateRoomId(){
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let out = "";
+      for(let i=0;i<6;i++) out += chars[Math.floor(Math.random()*chars.length)];
+      return out;
+    }
+
+    function getRoomDocRef(roomId){
+      return doc(db, "pokerRooms", roomId);
+    }
+
+    function snapshotState(){
+      return {
+        players,
+        rounds,
+        multiplier,
+        buyInAmount,
+        updatedAt: Date.now()
+      };
+    }
+
+    async function writeRoomNow(){
+      if (!currentRoomId) return;
+      const ref = getRoomDocRef(currentRoomId);
+      const payload = snapshotState();
+      await setDoc(ref, payload, { merge: true });
+    }
+
+    function scheduleWriteRoom(){
+      if (!currentRoomId) return;
+      if (applyingRemote) return;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        try{
+          setStatus(`同步中…（${currentRoomId}）`);
+          await writeRoomNow();
+          setStatus(`已同步（${currentRoomId}）`);
+        }catch(e){
+          console.error(e);
+          setStatus(`同步失敗（${currentRoomId}）`);
+        }
+      }, 250); // debounce：避免輸入時一直寫
+    }
+
+    function applyRemoteState(data){
+      if (!data) return;
+      applyingRemote = true;
+      try{
+        // 用遠端覆蓋本地
+        players = Array.isArray(data.players) ? data.players : [];
+        rounds = Array.isArray(data.rounds) ? data.rounds : [];
+        multiplier = Number(data.multiplier) || 100;
+        buyInAmount = Number(data.buyInAmount) || 20000;
+
+        // 存回 localStorage（離線也保留）
+        saveToStorage();
+
+        // 重新渲染
+        render();
+        renderRoundSummary();
+        updateSummary();
+        renderExpenseTable();
+        recalcExpenseSummary();
+      } finally{
+        applyingRemote = false;
+      }
+    }
+
+    function startRoomListener(roomId){
+      const ref = getRoomDocRef(roomId);
+      if (unsubRoom) unsubRoom();
+      unsubRoom = onSnapshot(ref, (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setStatus(`收到同步（${roomId}）`);
+        applyRemoteState(data);
+        setStatus(`已同步（${roomId}）`);
+      }, (err) => {
+        console.error(err);
+        setStatus(`監聽失敗（${roomId}）`);
+      });
+    }
+
+    // === 對外提供按鈕 function ===
+    window.createRoom = async function(){
+      const roomId = generateRoomId();
+      currentRoomId = roomId;
+      setStatus(`建立房間中…（${roomId}）`);
+
+      // 先寫一份當下狀態到房間
+      try{
+        await setDoc(getRoomDocRef(roomId), snapshotState(), { merge: true });
+        // 更新網址，方便分享
+        const url = new URL(location.href);
+        url.searchParams.set('room', roomId);
+        history.replaceState(null, "", url.toString());
+
+        startRoomListener(roomId);
+        setStatus(`已同步（${roomId}）`);
+      }catch(e){
+        console.error(e);
+        setStatus(`建立失敗（${roomId}）`);
+      }
+    };
+
+    window.joinRoom = async function(){
+      const roomId = String(roomInputEl.value || '').trim().toUpperCase();
+      if (!roomId) {
+        alert('請輸入房間代碼');
+        return;
+      }
+
+      currentRoomId = roomId;
+      setStatus(`加入房間中…（${roomId}）`);
+
+      try{
+        const ref = getRoomDocRef(roomId);
+        const snap = await getDoc(ref);
+        if (snap.exists()){
+          applyRemoteState(snap.data());
+        } else {
+          // 房間不存在：用你目前本地狀態建立一個
+          await setDoc(ref, snapshotState(), { merge: true });
+        }
+
+        const url = new URL(location.href);
+        url.searchParams.set('room', roomId);
+        history.replaceState(null, "", url.toString());
+
+        startRoomListener(roomId);
+        setStatus(`已同步（${roomId}）`);
+      }catch(e){
+        console.error(e);
+        setStatus(`加入失敗（${roomId}）`);
+      }
+    };
+
+    window.leaveRoom = function(){
+      if (unsubRoom) unsubRoom();
+      unsubRoom = null;
+      currentRoomId = null;
+
+      const url = new URL(location.href);
+      url.searchParams.delete('room');
+      history.replaceState(null, "", url.toString());
+
+      setStatus('本地模式（localStorage）');
+    };
+
+    // ====== 你的原本功能（小修：每次 saveToStorage 後若在房間就同步） ======
+
+    // 升級補丁：把舊資料補上 active / buyInCounts / expensesAutoSign
     (function migrateStorage() {
       try {
         players = Array.isArray(players) ? players : [];
@@ -426,7 +639,6 @@
           roundProfits: [],
           buyInCounts: [],
           active: true,
-          // dinner/drink：輸入正數但存負值；other(代墊)：存正值
           expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
         }, p);
 
@@ -451,14 +663,15 @@
       localStorage.setItem('players', JSON.stringify(players));
     })();
 
-    function updateMultiplier(value) {
+    window.updateMultiplier = function(value) {
       multiplier = parseFloat(value) || 100;
       localStorage.setItem('multiplier', multiplier);
       players.forEach((_, i) => updateProfit(i));
       recalcExpenseSummary();
-    }
+      scheduleWriteRoom();
+    };
 
-    function updateBuyInAmount(value) {
+    window.updateBuyInAmount = function(value) {
       buyInAmount = parseInt(value) || 0;
       localStorage.setItem('buyInAmount', buyInAmount);
       players.forEach((p, i) => {
@@ -469,9 +682,10 @@
       });
       saveToStorage();
       render();
-    }
+      scheduleWriteRoom();
+    };
 
-    function addPlayer() {
+    window.addPlayer = function() {
       const player = {
         name: '',
         buyIn: buyInAmount,
@@ -487,24 +701,31 @@
       players.push(player);
       saveToStorage();
       render();
-    }
+      scheduleWriteRoom();
+    };
 
-    function removePlayer(index) {
+    window.removePlayer = function(index) {
       players.splice(index, 1);
       saveToStorage();
       render();
-    }
+      renderRoundSummary();
+      updateSummary();
+      renderExpenseTable();
+      recalcExpenseSummary();
+      scheduleWriteRoom();
+    };
 
-    function buyIn(index) {
+    window.buyIn = function(index) {
       if (!players[index].active) return;
       players[index].buyIn += buyInAmount;
       players[index].tokens += 1;
       updateProfit(index);
       saveToStorage();
       render();
-    }
+      scheduleWriteRoom();
+    };
 
-    function decreaseBuyIn(index) {
+    window.decreaseBuyIn = function(index) {
       if (!players[index].active) return;
       if (players[index].buyIn >= buyInAmount && players[index].tokens > 0) {
         players[index].buyIn -= buyInAmount;
@@ -512,17 +733,19 @@
         updateProfit(index);
         saveToStorage();
         render();
+        scheduleWriteRoom();
       }
-    }
+    };
 
-    function updateRemaining(index, value) {
+    window.updateRemaining = function(index, value) {
       if (!players[index].active) return;
       players[index].remainingInput = value;
       const numericValue = parseInt(value.replace(/[^\d]/g, '')) || 0;
       players[index].remaining = numericValue;
       updateProfit(index);
       saveToStorage();
-    }
+      scheduleWriteRoom();
+    };
 
     function updateProfit(index) {
       const p = players[index];
@@ -542,13 +765,15 @@
       return profit > 0 ? `+${Math.round(profit)}` : `${Math.round(profit)}`;
     }
 
-    function updateName(index, value) {
+    window.updateName = function(index, value) {
       players[index].name = value;
       saveToStorage();
       renderExpenseTable();
-    }
+      renderRoundSummary();
+      scheduleWriteRoom();
+    };
 
-    function toggleActive(index) {
+    window.toggleActive = function(index) {
       const p = players[index];
       p.active = !p.active;
       if (!p.active) {
@@ -568,9 +793,10 @@
       render();
       updateSummary();
       recalcExpenseSummary();
-    }
+      scheduleWriteRoom();
+    };
 
-    function saveRound() {
+    window.saveRound = function() {
       const roundData = players.map(player => {
         const roundProfit = player.active ? player.profit : 0;
         player.roundProfits.push(roundProfit);
@@ -593,7 +819,8 @@
       resetCurrentRound();
       renderRoundSummary();
       recalcExpenseSummary();
-    }
+      scheduleWriteRoom();
+    };
 
     function resetCurrentRound() {
       players.forEach(player => {
@@ -612,7 +839,7 @@
       render();
     }
 
-    function clearStorage() {
+    window.clearStorage = function() {
       localStorage.clear();
       players = [];
       rounds = [];
@@ -626,7 +853,8 @@
       updateSummary();
       renderExpenseTable();
       recalcExpenseSummary();
-    }
+      scheduleWriteRoom();
+    };
 
     function render() {
       document.getElementById('multiplierInput').value = multiplier;
@@ -726,14 +954,12 @@
       localStorage.setItem('buyInAmount', buyInAmount);
     }
 
-    // ✅ 金額計算：只收數字，空白=0
     function parseUnsignedInt(raw) {
       const digits = String(raw || '').replace(/[^\d]/g, '');
       return parseInt(digits || '0', 10);
     }
 
-    // ✅ dinner/drink：輸入正數但存負值；other：存正值
-    function updateExpenseAutoSign(index, field, value) {
+    window.updateExpenseAutoSign = function(index, field, value) {
       const p = players[index];
       if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
         p.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
@@ -748,7 +974,8 @@
 
       saveToStorage();
       recalcExpenseSummary();
-    }
+      scheduleWriteRoom();
+    };
 
     function getTotalProfit(player) {
       return (player.roundProfits || []).reduce((a, b) => a + b, 0);
@@ -821,9 +1048,9 @@
 
       players.forEach((p, i) => {
         const es = p.expensesAutoSign || { dinner: 0, drink: 0, other: 0 };
-        const dinner = Number(es.dinner) || 0; // 負值
-        const drink  = Number(es.drink)  || 0; // 負值
-        const other  = Number(es.other)  || 0; // 正值
+        const dinner = Number(es.dinner) || 0;
+        const drink  = Number(es.drink)  || 0;
+        const other  = Number(es.other)  || 0;
 
         sumDinner += dinner;
         sumDrink  += drink;
@@ -867,8 +1094,8 @@
       }
     }
 
-    // ✅ 匯出 Excel：移除「三欄合計」欄位，並將「最後應收付」改為「應收付」
-    function exportExcel() {
+    // ✅ 匯出 Excel：玩家名稱、總盈虧、晚餐、飲料、代墊、應收付（不含三欄合計）
+    window.exportExcel = function() {
       if (typeof XLSX === 'undefined') {
         alert('XLSX 函式庫尚未載入，請檢查網路或 CDN。');
         return;
@@ -878,16 +1105,14 @@
 
       const data = players.map(p => {
         const totalProfit = Math.round(getTotalProfit(p));
-
         const es = p.expensesAutoSign || { dinner: 0, drink: 0, other: 0 };
-        // Excel 輸出為正數金額（跟輸入一致）
+
         const dinnerShown = Math.round(Math.abs(Number(es.dinner) || 0));
         const drinkShown  = Math.round(Math.abs(Number(es.drink)  || 0));
         const otherShown  = Math.round(Math.abs(Number(es.other)  || 0));
 
-        // 內部合計（晚餐/飲料負，代墊正）
-        const expSum = Math.round((Number(es.dinner) || 0) + (Number(es.drink) || 0) + (Number(es.other) || 0));
-        const net = Math.round(totalProfit + expSum);
+        const expSum = (Number(es.dinner)||0) + (Number(es.drink)||0) + (Number(es.other)||0);
+        const finalNet = Math.round(totalProfit + expSum);
 
         return [
           p.name || '',
@@ -895,7 +1120,7 @@
           dinnerShown,
           drinkShown,
           otherShown,
-          net
+          finalNet
         ];
       });
 
@@ -908,22 +1133,34 @@
         { wch: 10 }, // 晚餐
         { wch: 10 }, // 飲料
         { wch: 10 }, // 代墊
-        { wch: 12 }  // 應收付
+        { wch: 10 }  // 應收付
       ];
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "結算");
 
       XLSX.writeFile(workbook, "poker_settlement.xlsx");
-    }
+    };
 
+    // ====== 啟動 ======
     if (players.length === 0) addPlayer();
     render();
     renderRoundSummary();
     updateSummary();
     renderExpenseTable();
     recalcExpenseSummary();
+
+    // 若網址有 ?room=XXXX 自動加入
+    (function autoJoinFromUrl(){
+      const url = new URL(location.href);
+      const roomId = (url.searchParams.get('room') || '').trim().toUpperCase();
+      if (!roomId) {
+        setStatus('本地模式（localStorage）');
+        return;
+      }
+      roomInputEl.value = roomId;
+      joinRoom();
+    })();
   </script>
 </body>
 </html>
-
