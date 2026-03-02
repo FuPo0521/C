@@ -341,7 +341,7 @@
     <label>單次買入籌碼：
       <input type="number" id="buyInAmountInput" value="20000" onchange="updateBuyInAmount(this.value)" />
     </label>
-    <button onclick="exportExcel()">匯出總盈虧 Excel</button>
+    <button onclick="exportExcel()">匯出 Excel</button>
   </div>
 
   <div id="players" class="player-container"></div>
@@ -545,7 +545,6 @@
     function updateName(index, value) {
       players[index].name = value;
       saveToStorage();
-      // 重新渲染金額表，讓玩家名稱同步（不影響輸入體驗，因為不是在那張表打字）
       renderExpenseTable();
     }
 
@@ -734,7 +733,6 @@
     }
 
     // ✅ dinner/drink：輸入正數但存負值；other：存正值
-    // 重要：這裡不重建表格，只 recalculation，避免手機變成只能輸入一位數
     function updateExpenseAutoSign(index, field, value) {
       const p = players[index];
       if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
@@ -762,7 +760,6 @@
       return v > 0 ? `+${v}` : `${v}`;
     }
 
-    // ✅ 建表：只在玩家增減、render() 時重建（避免打字中一直重建）
     function renderExpenseTable() {
       const table = document.getElementById('expenseTable');
       if (!table) return;
@@ -819,7 +816,6 @@
       });
     }
 
-    // ✅ 計算更新（不重建 input）
     function recalcExpenseSummary() {
       let sumDinner = 0, sumDrink = 0, sumOther = 0;
 
@@ -871,34 +867,54 @@
       }
     }
 
-    // 匯出 Excel：玩家名稱 + 歷史總盈虧（維持原功能）
+    // ✅ 匯出 Excel：移除「三欄合計」欄位，並將「最後應收付」改為「應收付」
     function exportExcel() {
       if (typeof XLSX === 'undefined') {
         alert('XLSX 函式庫尚未載入，請檢查網路或 CDN。');
         return;
       }
 
-      const headers = ["玩家名稱", "總盈虧"];
+      const headers = ["玩家名稱", "總盈虧", "晚餐", "飲料", "代墊", "應收付"];
 
       const data = players.map(p => {
-        const total = Math.round(
-          (p.roundProfits || []).reduce((a, b) => a + b, 0)
-        );
-        return [p.name || '', total];
+        const totalProfit = Math.round(getTotalProfit(p));
+
+        const es = p.expensesAutoSign || { dinner: 0, drink: 0, other: 0 };
+        // Excel 輸出為正數金額（跟輸入一致）
+        const dinnerShown = Math.round(Math.abs(Number(es.dinner) || 0));
+        const drinkShown  = Math.round(Math.abs(Number(es.drink)  || 0));
+        const otherShown  = Math.round(Math.abs(Number(es.other)  || 0));
+
+        // 內部合計（晚餐/飲料負，代墊正）
+        const expSum = Math.round((Number(es.dinner) || 0) + (Number(es.drink) || 0) + (Number(es.other) || 0));
+        const net = Math.round(totalProfit + expSum);
+
+        return [
+          p.name || '',
+          totalProfit,
+          dinnerShown,
+          drinkShown,
+          otherShown,
+          net
+        ];
       });
 
       const worksheetData = [headers, ...data];
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
       worksheet['!cols'] = [
-        { wch: 20 },
-        { wch: 10 }
+        { wch: 18 }, // 玩家名稱
+        { wch: 10 }, // 總盈虧
+        { wch: 10 }, // 晚餐
+        { wch: 10 }, // 飲料
+        { wch: 10 }, // 代墊
+        { wch: 12 }  // 應收付
       ];
 
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "總盈虧");
+      XLSX.utils.book_append_sheet(workbook, worksheet, "結算");
 
-      XLSX.writeFile(workbook, "poker_total_profit.xlsx");
+      XLSX.writeFile(workbook, "poker_settlement.xlsx");
     }
 
     if (players.length === 0) addPlayer();
@@ -910,6 +926,3 @@
   </script>
 </body>
 </html>
-
-
-
