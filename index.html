@@ -536,7 +536,16 @@ input[disabled]{
           <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (${buyInAmount}籌碼 - 1代幣)</button>
           <button onclick="toggleActive(${index})">${player.active ? '標記退場' : '標記復出'}</button><br><br>
           <label>手動輸入剩餘籌碼：</label>
-          <input id="${inputId}" type="text" value="${player.remainingInput}" oninput="updateRemaining(${index}, this.value)" ${!player.active ? 'disabled' : ''} />
+         <input
+  id="${inputId}"
+  type="text"
+  inputmode="numeric"
+  pattern="[0-9]*"
+  autocomplete="off"
+  value="${player.remainingInput}"
+  oninput="updateRemaining(${index}, this.value)"
+  ${!player.active ? 'disabled' : ''}
+/>
           <p>盈虧：<span id="${profitId}">${formatProfit(player.profit)}</span></p>
         `;
 
@@ -631,5 +640,7 @@ input[disabled]{
   </script>
 </body>
 </html>
+
+
 
 
