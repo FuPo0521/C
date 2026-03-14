@@ -85,7 +85,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
   font-size: calc(15px * var(--ui-scale));
   padding: 11px 16px;
   min-height:44px;
-}
     border-radius: 12px;
     border:1px solid var(--card-border);
     background: var(--panel-soft);
@@ -404,10 +403,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
   <h3>金額計算</h3>
 
   <div class="table-scroll">
-
-    <table id="expenseTable">
-<div class="table-scroll">
-    <h3>金額計算</h3>
     <table id="expenseTable">
       <thead>
         <tr>
@@ -424,18 +419,18 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
     </table>
   </div>
 
-    <div class="expense-meta">
-      <div>餐費合計：<span id="sumDinner" class="pill">0</span></div>
-      <div>飲料合計：<span id="sumDrink" class="pill">0</span></div>
-      <div>代墊合計：<span id="sumOther" class="pill">0</span></div>
-      <div>三欄總加總：<span id="sumAllExpense" class="pill">0</span></div>
-      <div id="expenseWarn" class="warn" style="display:none;"></div>
-    </div>
+  <div class="expense-meta">
+    <div>餐費合計：<span id="sumDinner" class="pill">0</span></div>
+    <div>飲料合計：<span id="sumDrink" class="pill">0</span></div>
+    <div>代墊合計：<span id="sumOther" class="pill">0</span></div>
+    <div>三欄總加總：<span id="sumAllExpense" class="pill">0</span></div>
+    <div id="expenseWarn" class="warn" style="display:none;"></div>
   </div>
 
   <div class="reset-button" style="margin-top:20px;">
     <button onclick="clearStorage()">清除儲存資料</button>
   </div>
+    </div> 
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
@@ -766,6 +761,9 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
             expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
           }, p, { id: d.id }));
         });
+        
+        // ⭐ 加這一行
+remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
 
         if (isLocked()) {
           pendingPlayers = remotePlayers;
@@ -1457,7 +1455,7 @@ function renderPlayers(){
               value="${dinnerShown ? dinnerShown : ''}"
               onfocus="__beginEdit()"
               onblur="__endEdit()"
-              oninput="__touchEdit();updateExpenseAutoSign('${p.id}', 'dinner', this.value)"
+              oninput="__touchEdit(); updateExpenseAutoSign('${p.id}', 'dinner', this.value)"
               placeholder="0"
             />
           </td>
