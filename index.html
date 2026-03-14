@@ -2,7 +2,8 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport"
+content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>德州撲克籌碼追蹤器</title>
   <style>
   :root{
@@ -1358,7 +1359,7 @@ function updatePlayerCard(player,index){
   const remaining = document.getElementById(`remaining-${player.id}`);
   const label = card.querySelector("label");
 if(label){
-  label.textContent = `玩家${player.playerNumber} 名稱：`;
+  label.textContent = `玩家${player.playerNumber || index+1} 名稱：`;
 }
 
   if(buyin) buyin.textContent = player.buyIn;
