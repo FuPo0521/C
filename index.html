@@ -1007,38 +1007,41 @@
       }
     };
 
-    window.buyIn = function(index) {
-      const p = players[index];
-      if (!p.active) return;
-      p.buyIn += buyInAmount;
-      p.tokens += 1;
-      updateProfit(index);
-      saveToStorage();
+   window.buyIn = function(index) {
+  const p = players[index];
+  if (!p.active) return;
 
-      // 這裡不要重繪 players（避免打字的人被影響），只更新 summary/profit/expense
-      updateSummary();
-      recalcExpenseSummary();
-      updateGrandTotal();
+  p.buyIn += buyInAmount;
+  p.tokens += 1;
 
-      if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
-    };
+  updateProfit(index);
+  saveToStorage();
 
-    window.decreaseBuyIn = function(index) {
-      const p = players[index];
-      if (!p.active) return;
-      if (p.buyIn >= buyInAmount && p.tokens > 0) {
-        p.buyIn -= buyInAmount;
-        p.tokens -= 1;
-        updateProfit(index);
-        saveToStorage();
+  // 更新 UI
+  requestFullRender();
 
-        updateSummary();
-        recalcExpenseSummary();
-        updateGrandTotal();
+  if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
+};
 
-        if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
-      }
-    };
+ window.decreaseBuyIn = function(index) {
+  const p = players[index];
+  if (!p.active) return;
+
+  if (p.buyIn >= buyInAmount && p.tokens > 0) {
+
+    p.buyIn -= buyInAmount;
+    p.tokens -= 1;
+
+    updateProfit(index);
+    saveToStorage();
+
+    // 更新 UI
+    requestFullRender();
+
+    if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
+
+  }
+};
 
     window.updateRemaining = function(index, value) {
       const p = players[index];
