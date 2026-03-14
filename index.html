@@ -974,8 +974,9 @@
 
     window.addPlayer = async function() {
 
-  const player = {
-    id: uid(),
+ const player = {
+  id: uid(),
+  playerNumber: players.length ? Math.max(...players.map(p => p.playerNumber || 0)) + 1 : 1,
     name: '',
     buyIn: buyInAmount,
     tokens: 1,
@@ -991,8 +992,6 @@
   players.push(player);
 
   saveToStorage();
-
-  renderPlayers();   // ⭐ 加在這裡
 
   requestFullRender();
 
@@ -1066,8 +1065,12 @@ window.decreaseBuyIn = function(playerId) {
   }
 };
 
-    window.updateRemaining = function(index, value) {
-      const p = players[index];
+window.updateRemaining = function(playerId, value) {
+
+  const index = players.findIndex(p => p.id === playerId);
+  if(index === -1) return;
+
+  const p = players[index];
       if (!p.active) return;
 
       p.remainingInput = value;
@@ -1084,8 +1087,12 @@ window.decreaseBuyIn = function(playerId) {
       if (currentRoomId) scheduleWritePlayer(p.id, { remainingInput: p.remainingInput, remaining: p.remaining, profit: p.profit });
     };
 
-    window.updateName = function(index, value) {
-      const p = players[index];
+window.updateName = function(playerId, value) {
+
+  const index = players.findIndex(p => p.id === playerId);
+  if(index === -1) return;
+
+  const p = players[index];
       p.name = value;
       saveToStorage();
 
@@ -1244,7 +1251,7 @@ function createPlayerCard(player, index){
 onclick="removePlayer(players.findIndex(p=>p.id==='${player.id}'))">×</button>
 
 <p>
-<label>玩家${index+1} 名稱：</label>
+<label>玩家${player.playerNumber} 名稱：</label>
 
 <input
 id="${nameInputId}"
@@ -1252,7 +1259,7 @@ type="text"
 value="${player.name || ''}"
 onfocus="__beginEdit()"
 onblur="__endEdit()"
-oninput="__touchEdit(); updateName(${index}, this.value)"
+oninput="__touchEdit(); updateName('${player.id}', this.value)"
 />
 
 </p>
@@ -1277,7 +1284,7 @@ id="${remainingInputId}"
 value="${player.remainingInput || ''}"
 onfocus="__beginEdit()"
 onblur="__endEdit()"
-oninput="__touchEdit(); updateRemaining(${index}, this.value)"
+oninput="__touchEdit(); updateRemaining('${player.id}', this.value)"
 />
 
 <p>
@@ -1295,7 +1302,7 @@ ${formatProfit(player.profit)}
 
 
 
-function updatePlayerCard(player){
+function updatePlayerCard(player,index){
 
   const card = playerDomMap.get(player.id);
 
@@ -1314,6 +1321,10 @@ function updatePlayerCard(player){
   const profit = document.getElementById(`profit-${player.id}`);
   const name = document.getElementById(`name-${player.id}`);
   const remaining = document.getElementById(`remaining-${player.id}`);
+  const label = card.querySelector("label");
+if(label){
+  label.textContent = `玩家${player.playerNumber} 名稱：`;
+}
 
   if(buyin) buyin.textContent = player.buyIn;
   if(tokens) tokens.textContent = player.tokens;
@@ -1352,7 +1363,7 @@ function renderPlayers(){
 
     }else{
 
-      updatePlayerCard(player);
+      updatePlayerCard(player,index);
 
     }
 
