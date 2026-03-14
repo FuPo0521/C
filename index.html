@@ -1009,9 +1009,13 @@
 
 };
 
-    window.removePlayer = async function(index) {
-      const p = players[index];
-      players.splice(index, 1);
+window.removePlayer = async function(playerId) {
+
+  const index = players.findIndex(p => p.id === playerId);
+  if(index === -1) return;
+
+  const p = players[index];
+  players.splice(index, 1);
      const card = playerDomMap.get(p?.id);
 if(card){
   card.remove();
@@ -1028,6 +1032,8 @@ if(card){
  window.buyIn = function(playerId) {
 
   const index = players.findIndex(p => p.id === playerId);
+   if(index === -1) return;
+   
   const p = players[index];
   if (!p.active) return;
 
@@ -1046,6 +1052,8 @@ if(card){
 window.decreaseBuyIn = function(playerId) {
 
   const index = players.findIndex(p => p.id === playerId);
+  if(index === -1) return;
+  
   const p = players[index];
   if (!p.active) return;
 
@@ -1105,6 +1113,8 @@ window.updateName = function(playerId, value) {
 window.toggleActive = function(playerId) {
 
   const index = players.findIndex(p => p.id === playerId);
+  if(index === -1) return;
+  
   const p = players[index];
       p.active = !p.active;
 
@@ -1216,24 +1226,30 @@ window.toggleActive = function(playerId) {
       return parseInt(digits || '0', 10);
     }
 
-    window.updateExpenseAutoSign = function(index, field, value) {
-      const p = players[index];
-      if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
-        p.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
-      }
-      const n = parseUnsignedInt(value);
+window.updateExpenseAutoSign = function(playerId, field, value){
 
-      if (field === 'dinner' || field === 'drink') p.expensesAutoSign[field] = -n;
-      else p.expensesAutoSign[field] = +n;
+  const index = players.findIndex(p => p.id === playerId);
+  if(index === -1) return;
 
-      saveToStorage();
+  const p = players[index];
 
-      // 這裡也不要重繪表格（避免打字中被抖動），只重算結果
-      recalcExpenseSummary();
-      updateGrandTotal();
+  if (!p.expensesAutoSign || typeof p.expensesAutoSign !== 'object') {
+    p.expensesAutoSign = { dinner: 0, drink: 0, other: 0 };
+  }
 
-      if (currentRoomId) scheduleWritePlayer(p.id, { expensesAutoSign: p.expensesAutoSign });
-    };
+  const n = parseUnsignedInt(value);
+
+  if (field === 'dinner' || field === 'drink') p.expensesAutoSign[field] = -n;
+  else p.expensesAutoSign[field] = +n;
+
+  saveToStorage();
+
+  recalcExpenseSummary();
+  updateGrandTotal();
+
+  if (currentRoomId)
+    scheduleWritePlayer(p.id, { expensesAutoSign: p.expensesAutoSign });
+};
 // ========= UI render =========
 
 function createPlayerCard(player, index){
@@ -1248,7 +1264,7 @@ function createPlayerCard(player, index){
 
   div.innerHTML = `
 <button class="remove-button"
-onclick="removePlayer(players.findIndex(p=>p.id==='${player.id}'))">×</button>
+onclick="removePlayer('${player.id}')">×</button>
 
 <p>
 <label>玩家${player.playerNumber} 名稱：</label>
@@ -1281,6 +1297,10 @@ ${player.active ? '標記退場' : '標記復出'}
 
 <input
 id="${remainingInputId}"
+type="text"
+inputmode="numeric"
+pattern="[0-9]*"
+autocomplete="off"
 value="${player.remainingInput || ''}"
 onfocus="__beginEdit()"
 onblur="__endEdit()"
@@ -1345,13 +1365,18 @@ function renderPlayers(){
 
   const container = document.getElementById('players');
 
+  // 建立 playerId set（O(n)）
+  const playerIdSet = new Set(players.map(p => p.id));
+
+  // 清除不存在的 DOM（O(n)）
   playerDomMap.forEach((card, id)=>{
-    if(!players.find(p=>p.id===id)){
+    if(!playerIdSet.has(id)){
       card.remove();
       playerDomMap.delete(id);
     }
   });
 
+  // 更新或新增 DOM（O(n)）
   players.forEach((player,index)=>{
 
     let card = playerDomMap.get(player.id);
@@ -1398,7 +1423,7 @@ function renderPlayers(){
       const tbody = table.getElementsByTagName('tbody')[0];
       tbody.innerHTML = '';
 
-      players.forEach((p, i) => {
+      players.forEach((p) => {
         const es = p.expensesAutoSign || { dinner: 0, drink: 0, other: 0 };
         const dinnerShown = Math.abs(Number(es.dinner) || 0);
         const drinkShown  = Math.abs(Number(es.drink)  || 0);
@@ -1416,7 +1441,7 @@ function renderPlayers(){
               value="${dinnerShown ? dinnerShown : ''}"
               onfocus="__beginEdit()"
               onblur="__endEdit()"
-              oninput="__touchEdit(); updateExpenseAutoSign(${i}, 'dinner', this.value)"
+              oninput="__touchEdit();updateExpenseAutoSign('${p.id}', 'dinner', this.value)"
               placeholder="0"
             />
           </td>
@@ -1429,7 +1454,7 @@ function renderPlayers(){
               value="${drinkShown ? drinkShown : ''}"
               onfocus="__beginEdit()"
               onblur="__endEdit()"
-              oninput="__touchEdit(); updateExpenseAutoSign(${i}, 'drink', this.value)"
+              oninput="__touchEdit();updateExpenseAutoSign('${p.id}', 'drink', this.value)"
               placeholder="0"
             />
           </td>
@@ -1442,13 +1467,13 @@ function renderPlayers(){
               value="${otherShown ? otherShown : ''}"
               onfocus="__beginEdit()"
               onblur="__endEdit()"
-              oninput="__touchEdit(); updateExpenseAutoSign(${i}, 'other', this.value)"
+              oninput="__touchEdit();updateExpenseAutoSign('${p.id}', 'other', this.value)"
               placeholder="0"
             />
           </td>
-          <td><span class="pill" id="expSum-${i}">0</span></td>
-          <td><span class="pill" id="totalProfit-${i}">0</span></td>
-          <td><span class="pill" id="finalNet-${i}">+0</span></td>
+          <td><span class="pill" id="expSum-${p.id}">0</span></td>
+          <td><span class="pill" id="totalProfit-${p.id}">0</span></td>
+          <td><span class="pill" id="finalNet-${p.id}">+0</span></td>
         `;
       });
     }
@@ -1470,9 +1495,9 @@ function renderPlayers(){
         const totalProfit = getTotalProfit(p);
         const finalNet = totalProfit + expSum;
 
-        const expSumEl = document.getElementById(`expSum-${i}`);
-        const totalProfitEl = document.getElementById(`totalProfit-${i}`);
-        const finalNetEl = document.getElementById(`finalNet-${i}`);
+        const expSumEl = document.getElementById(`expSum-${p.id}`);
+        const totalProfitEl = document.getElementById(`totalProfit-${p.id}`);
+        const finalNetEl = document.getElementById(`finalNet-${p.id}`);
 
         if (expSumEl) expSumEl.textContent = formatSigned(expSum);
         if (totalProfitEl) totalProfitEl.textContent = formatSigned(totalProfit);
