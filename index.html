@@ -80,10 +80,11 @@
     font-size: calc(15px * var(--ui-scale));
     color: var(--muted);
   }
-
-  button{
-    font-size: calc(15px * var(--ui-scale));
-    padding: 11px 16px;
+    button{
+  font-size: calc(15px * var(--ui-scale));
+  padding: 11px 16px;
+  min-height:44px;
+}
     border-radius: 12px;
     border:1px solid var(--card-border);
     background: var(--panel-soft);
@@ -267,6 +268,10 @@
   }
 
   .expense-summary tr:nth-child(even){ background:#fafcff; }
+    
+    .table-scroll{
+  overflow-x:auto;
+}
 
   .pill{
     display:inline-block;
@@ -394,6 +399,13 @@
   </div>
 
   <div class="expense-summary">
+
+  <h3>金額計算</h3>
+
+  <div class="table-scroll">
+
+    <table id="expenseTable">
+<div class="table-scroll">
     <h3>金額計算</h3>
     <table id="expenseTable">
       <thead>
@@ -409,6 +421,7 @@
       </thead>
       <tbody></tbody>
     </table>
+  </div>
 
     <div class="expense-meta">
       <div>餐費合計：<span id="sumDinner" class="pill">0</span></div>
@@ -616,10 +629,12 @@
           roundProfits: [],
           buyInCounts: [],
           active: true,
+          playerNumber: 0,
           expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
         }, p);
 
         if (!np.id) np.id = uid();
+        if (!np.playerNumber) np.playerNumber = players.indexOf(p) + 1;
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         if (!Array.isArray(np.buyInCounts)) np.buyInCounts = [];
         if (!np.expensesAutoSign || typeof np.expensesAutoSign !== 'object') {
