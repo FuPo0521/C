@@ -454,6 +454,7 @@
     window.rounds = JSON.parse(localStorage.getItem('rounds')) || [];
     window.multiplier = parseFloat(localStorage.getItem('multiplier')) || 100;
     window.buyInAmount = parseInt(localStorage.getItem('buyInAmount')) || 20000;
+    const playerDomMap = new Map();
 
     // ========= 同步狀態 =========
     let currentRoomId = null;
@@ -972,33 +973,51 @@
     };
 
     window.addPlayer = async function() {
-      const player = {
-        id: uid(),
-        name: '',
-        buyIn: buyInAmount,
-        tokens: 1,
-        remainingInput: '',
-        remaining: 0,
-        profit: 0,
-        roundProfits: [],
-        buyInCounts: [],
-        active: true,
-        expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
-      };
-      players.push(player);
-      saveToStorage();
-      requestFullRender();
 
-      if (currentRoomId) {
-        try{
-          await setDoc(playerRef(currentRoomId, player.id), Object.assign({}, player, { updatedAt: serverTimestamp() }), { merge: true });
-        }catch(e){ console.error(e); }
-      }
-    };
+  const player = {
+    id: uid(),
+    name: '',
+    buyIn: buyInAmount,
+    tokens: 1,
+    remainingInput: '',
+    remaining: 0,
+    profit: 0,
+    roundProfits: [],
+    buyInCounts: [],
+    active: true,
+    expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
+  };
+
+  players.push(player);
+
+  saveToStorage();
+
+  renderPlayers();   // ⭐ 加在這裡
+
+  requestFullRender();
+
+  if (currentRoomId) {
+    try{
+      await setDoc(
+        playerRef(currentRoomId, player.id),
+        Object.assign({}, player, { updatedAt: serverTimestamp() }),
+        { merge: true }
+      );
+    }catch(e){
+      console.error(e);
+    }
+  }
+
+};
 
     window.removePlayer = async function(index) {
       const p = players[index];
       players.splice(index, 1);
+     const card = playerDomMap.get(p?.id);
+if(card){
+  card.remove();
+  playerDomMap.delete(p.id);
+}
       saveToStorage();
       requestFullRender();
 
@@ -1202,64 +1221,140 @@
 
       if (currentRoomId) scheduleWritePlayer(p.id, { expensesAutoSign: p.expensesAutoSign });
     };
+// ========= UI render =========
 
-    // ========= UI render =========
-    function renderPlayers() {
-      document.getElementById('multiplierInput').value = multiplier;
-      const buyInInput = document.getElementById('buyInAmountInput');
-      if (buyInInput) buyInInput.value = buyInAmount;
+function createPlayerCard(player, index){
 
-      const container = document.getElementById('players');
-      container.innerHTML = '';
+  const div = document.createElement('div');
+  div.className = 'player' + (player.active ? '' : ' inactive');
+  div.dataset.playerId = player.id;
 
-      players.forEach((player, index) => {
-        const div = document.createElement('div');
-        div.className = 'player' + (player.active ? '' : ' inactive');
+  const remainingInputId = `remaining-${player.id}`;
+  const nameInputId = `name-${player.id}`;
+  const profitId = `profit-${player.id}`;
 
-        const remainingInputId = `remaining-${player.id}`;
-        const nameInputId = `name-${player.id}`;
-        const profitId = `profit-${player.id}`;
+  div.innerHTML = `
+<button class="remove-button"
+onclick="removePlayer(players.findIndex(p=>p.id==='${player.id}'))">×</button>
 
-        div.innerHTML = `
-  <button class="remove-button" onclick="removePlayer(${index})">×</button>
-  <p>
-    <label>玩家${index + 1} 名稱：</label>
-            <input
-              id="${nameInputId}"
-              type="text"
-              value="${player.name || ''}"
-              onfocus="__beginEdit()"
-              onblur="__endEdit()"
-              oninput="__touchEdit(); updateName(${index}, this.value)"
-              placeholder="請輸入玩家名稱"
-            />
-            ${player.active ? '' : '<span class="tag">已退場</span>'}
-          </p>
-          <p>買入籌碼：${player.buyIn || 0}</p>
-          <p>代幣數量：${player.tokens || 0}</p>
-          <button onclick="buyIn(${index})" ${!player.active ? 'disabled' : ''}>買入 (${buyInAmount}籌碼 + 1代幣)</button>
-          <button onclick="decreaseBuyIn(${index})" ${!player.active ? 'disabled' : ''}>減少 (${buyInAmount}籌碼 - 1代幣)</button>
-          <button onclick="toggleActive(${index})">${player.active ? '標記退場' : '標記復出'}</button><br><br>
-          <label>手動輸入剩餘籌碼：</label>
-          <input
-            id="${remainingInputId}"
-            type="text"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            autocomplete="off"
-            value="${player.remainingInput || ''}"
-            onfocus="__beginEdit()"
-            onblur="__endEdit()"
-            oninput="__touchEdit(); updateRemaining(${index}, this.value)"
-            ${!player.active ? 'disabled' : ''}
-          />
-          <p>盈虧：<span id="${profitId}">${formatProfit(player.profit || 0)}</span></p>
-        `;
+<p>
+<label>玩家${index+1} 名稱：</label>
 
-        container.appendChild(div);
-      });
+<input
+id="${nameInputId}"
+type="text"
+value="${player.name || ''}"
+onfocus="__beginEdit()"
+onblur="__endEdit()"
+oninput="__touchEdit(); updateName(${index}, this.value)"
+/>
+
+</p>
+
+<p>買入籌碼：<span id="buyin-${player.id}">${player.buyIn}</span></p>
+<p>代幣數量：<span id="tokens-${player.id}">${player.tokens}</span></p>
+
+<button onclick="buyIn(${index})">買入</button>
+<button onclick="decreaseBuyIn(${index})">減少</button>
+
+<button class="toggle-active"
+onclick="toggleActive(${index})">
+
+${player.active ? '標記退場' : '標記復出'}
+
+</button>
+
+<br><br>
+
+<label>剩餘籌碼：</label>
+
+<input
+id="${remainingInputId}"
+value="${player.remainingInput || ''}"
+onfocus="__beginEdit()"
+onblur="__endEdit()"
+oninput="__touchEdit(); updateRemaining(${index}, this.value)"
+/>
+
+<p>
+盈虧：
+<span id="${profitId}">
+${formatProfit(player.profit)}
+</span>
+</p>
+`;
+
+  playerDomMap.set(player.id, div);
+
+  return div;
+}
+
+
+
+function updatePlayerCard(player){
+
+  const card = playerDomMap.get(player.id);
+
+  if(!card) return;
+
+  card.className = 'player' + (player.active ? '' : ' inactive');
+
+  const toggleBtn = card.querySelector('.toggle-active');
+  if(toggleBtn){
+    toggleBtn.textContent =
+      player.active ? '標記退場' : '標記復出';
+  }
+
+  const buyin = document.getElementById(`buyin-${player.id}`);
+  const tokens = document.getElementById(`tokens-${player.id}`);
+  const profit = document.getElementById(`profit-${player.id}`);
+  const name = document.getElementById(`name-${player.id}`);
+  const remaining = document.getElementById(`remaining-${player.id}`);
+
+  if(buyin) buyin.textContent = player.buyIn;
+  if(tokens) tokens.textContent = player.tokens;
+  if(profit) profit.textContent = formatProfit(player.profit);
+
+  if(name && name.value !== player.name){
+    name.value = player.name || '';
+  }
+
+  if(remaining && remaining.value !== player.remainingInput){
+    remaining.value = player.remainingInput || '';
+  }
+}
+
+
+
+function renderPlayers(){
+
+  const container = document.getElementById('players');
+
+  playerDomMap.forEach((card, id)=>{
+    if(!players.find(p=>p.id===id)){
+      card.remove();
+      playerDomMap.delete(id);
+    }
+  });
+
+  players.forEach((player,index)=>{
+
+    let card = playerDomMap.get(player.id);
+
+    if(!card){
+
+      card = createPlayerCard(player,index);
+      container.appendChild(card);
+
+    }else{
+
+      updatePlayerCard(player);
+
     }
 
+  });
+
+}
     function renderRoundSummary() {
       const tableBody = document.getElementById('roundsTable').getElementsByTagName('tbody')[0];
       tableBody.innerHTML = '';
