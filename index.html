@@ -1026,7 +1026,9 @@ if(card){
       }
     };
 
-   window.buyIn = function(index) {
+ window.buyIn = function(playerId) {
+
+  const index = players.findIndex(p => p.id === playerId);
   const p = players[index];
   if (!p.active) return;
 
@@ -1042,7 +1044,9 @@ if(card){
   if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
 };
 
- window.decreaseBuyIn = function(index) {
+window.decreaseBuyIn = function(playerId) {
+
+  const index = players.findIndex(p => p.id === playerId);
   const p = players[index];
   if (!p.active) return;
 
@@ -1091,8 +1095,10 @@ if(card){
       if (currentRoomId) scheduleWritePlayer(p.id, { name: p.name });
     };
 
-    window.toggleActive = function(index) {
-      const p = players[index];
+window.toggleActive = function(playerId) {
+
+  const index = players.findIndex(p => p.id === playerId);
+  const p = players[index];
       p.active = !p.active;
 
       if (!p.active) {
@@ -1254,11 +1260,9 @@ oninput="__touchEdit(); updateName(${index}, this.value)"
 <p>買入籌碼：<span id="buyin-${player.id}">${player.buyIn}</span></p>
 <p>代幣數量：<span id="tokens-${player.id}">${player.tokens}</span></p>
 
-<button onclick="buyIn(${index})">買入</button>
-<button onclick="decreaseBuyIn(${index})">減少</button>
-
-<button class="toggle-active"
-onclick="toggleActive(${index})">
+<button onclick="buyIn('${player.id}')">買入</button>
+<button onclick="decreaseBuyIn('${player.id}')">減少</button>
+<button class="toggle-active" onclick="toggleActive('${player.id}')">
 
 ${player.active ? '標記退場' : '標記復出'}
 
