@@ -897,11 +897,16 @@ remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
   const baseUrl = location.origin + location.pathname.replace(/index\.html$/, "");
   const url = baseUrl + "?room=" + roomId;
 
+  const shareText = `🎲 德州撲克房間
+房號：${roomId}
+👉 點這裡加入：
+${url}`;
+
   if (navigator.share) {
     navigator.share({
       title: '德州撲克房間',
-      text: `房間代碼：${roomId}，點擊加入`,
-      url: url
+      text: shareText,
+      url: url // 可留可不留
     }).catch(() => {});
   } else {
     navigator.clipboard.writeText(url);
