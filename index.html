@@ -875,7 +875,7 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
   await setDoc(
     playerRef(roomId, p.id),
     Object.assign({}, p, {
-      createdAt: p.createdAt || serverTimestamp(), // ⭐ 加這個
+      createdAt: p.createdAt ?? serverTimestamp(), // ⭐ 加這個
       updatedAt: serverTimestamp()
     }),
     { merge: true }
@@ -1051,7 +1051,7 @@ ${url}`;
 
   saveToStorage();
 
-  requestFullRender();
+  fullRenderNow();
 
   if (currentRoomId) {
     try{
@@ -1105,7 +1105,7 @@ if(card){
   saveToStorage();
 
   // 更新 UI
-  requestFullRender();
+  fullRenderNow(); 
 
   if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
 };
@@ -1127,7 +1127,7 @@ window.decreaseBuyIn = function(playerId) {
     saveToStorage();
 
     // 更新 UI
-    requestFullRender();
+    fullRenderNow();
 
     if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
 
@@ -1196,7 +1196,7 @@ window.toggleActive = function(playerId) {
       }
 
       saveToStorage();
-      requestFullRender();
+      fullRenderNow();
 
       if (currentRoomId) scheduleWritePlayer(p.id, {
         active: p.active,
@@ -1419,11 +1419,14 @@ if(label){
   if(tokens) tokens.textContent = player.tokens;
   if(profit) profit.textContent = formatProfit(player.profit);
 
-  if(name && name.value !== player.name){
+  if (name && name !== document.activeElement) {
+  if (name.value !== player.name) {
     name.value = player.name || '';
   }
+}
 
-  if(remaining && remaining.value !== player.remainingInput){
+  if (remaining && remaining !== document.activeElement) {
+  if (remaining.value !== player.remainingInput) {
     remaining.value = player.remainingInput || '';
   }
 }
@@ -1460,9 +1463,11 @@ function renderPlayers(){
 });
 
 // ⭐ ⭐ ⭐ 這段要在外面（只執行一次）
-players.forEach(p => {
+players.forEach((p, i) => {
   const card = playerDomMap.get(p.id);
-  if (card) container.appendChild(card);
+  if (card && container.children[i] !== card) {
+    container.appendChild(card);
+  }
 });
 
 }
@@ -1488,7 +1493,10 @@ players.forEach(p => {
     }
 
     function renderExpenseTable() {
-      if (isLocked()) return;
+      if (isLocked()) {
+  recalcExpenseSummary();
+  return;
+}
       const table = document.getElementById('expenseTable');
       if (!table) return;
 
