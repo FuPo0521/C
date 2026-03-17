@@ -683,7 +683,7 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           console.error(e);
           setStatus(`同步失敗（${currentRoomId}）`);
         }
-      }, 250);
+      }, 500);
     }
 
     async function writeRoomSettingsNow(){
@@ -786,7 +786,9 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           applyingRemote = false;
         }
 
-        fullRenderNow();
+        if (!isLocked()) {
+  fullRenderNow();
+}
         setStatus(`已同步（${roomId}）`);
       });
 
@@ -828,7 +830,7 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
   await setDoc(
     playerRef(roomId, p.id),
     Object.assign({}, p, {
-      createdAt: p.createdAt || serverTimestamp(), // ⭐ 加這個
+      createdAt: p.createdAt ?? serverTimestamp(), // ⭐ 加這個
       updatedAt: serverTimestamp()
     }),
     { merge: true }
@@ -1147,9 +1149,11 @@ window.updateRemaining = function(playerId, value) {
       updateProfit(index);
       saveToStorage();
 
-      updateSummary();
-      recalcExpenseSummary();
-      updateGrandTotal();
+      if (!isLocked()) {
+  updateSummary();
+  recalcExpenseSummary();
+  updateGrandTotal();
+}
 
       if (currentRoomId) scheduleWritePlayer(p.id, { remainingInput: p.remainingInput, remaining: p.remaining, profit: p.profit });
     };
@@ -1484,6 +1488,7 @@ players.forEach(p => {
     }
 
     function renderExpenseTable() {
+      if (isLocked()) return;
       const table = document.getElementById('expenseTable');
       if (!table) return;
 
