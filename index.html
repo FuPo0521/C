@@ -616,6 +616,7 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
       players = players.map(p => {
         const np = Object.assign({
           id: uid(),
+          createdAt: Date.now(),
           name: '',
           buyIn: buyInAmount,
           tokens: 1,
@@ -625,12 +626,10 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           roundProfits: [],
           buyInCounts: [],
           active: true,
-          playerNumber: 0,
           expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
         }, p);
 
         if (!np.id) np.id = uid();
-        if (!np.playerNumber) np.playerNumber = players.indexOf(p) + 1;
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         if (!Array.isArray(np.buyInCounts)) np.buyInCounts = [];
         if (!np.expensesAutoSign || typeof np.expensesAutoSign !== 'object') {
@@ -705,6 +704,12 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
     }
 
     // ========= 同步：監聽（硬鎖版：輸入中只暫存，不重繪） =========
+    function getTime(t){
+  if (!t) return 0;
+  if (typeof t === 'number') return t;
+  if (t.seconds) return t.seconds * 1000;
+  return 0;
+}
     function startListeners(roomId){
       if (unsubRoomDoc) unsubRoomDoc();
       if (unsubPlayers) unsubPlayers();
@@ -761,9 +766,10 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
             expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
           }, p, { id: d.id }));
         });
-        
-        // ⭐ 加這一行
-remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
+
+        remotePlayers.sort((a,b)=>{
+  return getTime(a.createdAt) - getTime(b.createdAt);
+});
 
         if (isLocked()) {
           pendingPlayers = remotePlayers;
@@ -819,9 +825,15 @@ remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
         await ensureRoomDoc(roomId);
 
         for (const p of players) {
-          if (!p.id) p.id = uid();
-          await setDoc(playerRef(roomId, p.id), Object.assign({}, p, { updatedAt: serverTimestamp() }), { merge: true });
-        }
+  await setDoc(
+    playerRef(roomId, p.id),
+    Object.assign({}, p, {
+      createdAt: p.createdAt || serverTimestamp(), // ⭐ 加這個
+      updatedAt: serverTimestamp()
+    }),
+    { merge: true }
+  );
+}
 
         for (const r of rounds) {
           await addDoc(roundsCol(roomId), Object.assign({}, r, { createdAt: serverTimestamp() }));
@@ -858,9 +870,15 @@ remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
           await ensureRoomDoc(roomId);
 
           for (const p of players) {
-            if (!p.id) p.id = uid();
-            await setDoc(playerRef(roomId, p.id), Object.assign({}, p, { updatedAt: serverTimestamp() }), { merge: true });
-          }
+  await setDoc(
+    playerRef(roomId, p.id),
+    Object.assign({}, p, {
+      createdAt: p.createdAt || serverTimestamp(), // ⭐ 加這個
+      updatedAt: serverTimestamp()
+    }),
+    { merge: true }
+  );
+}
 
           for (const r of rounds) {
             await addDoc(roundsCol(roomId), Object.assign({}, r, { createdAt: serverTimestamp() }));
@@ -1014,7 +1032,7 @@ ${url}`;
 
  const player = {
   id: uid(),
-  playerNumber: players.length ? Math.max(...players.map(p => p.playerNumber || 0)) + 1 : 1,
+   createdAt: Date.now(),
     name: '',
     buyIn: buyInAmount,
     tokens: 1,
@@ -1036,10 +1054,13 @@ ${url}`;
   if (currentRoomId) {
     try{
       await setDoc(
-        playerRef(currentRoomId, player.id),
-        Object.assign({}, player, { updatedAt: serverTimestamp() }),
-        { merge: true }
-      );
+  playerRef(currentRoomId, player.id),
+  Object.assign({}, player, {
+    createdAt: player.createdAt ?? serverTimestamp(), // ⭐ 防覆蓋
+    updatedAt: serverTimestamp()
+  }),
+  { merge: true }
+);
     }catch(e){
       console.error(e);
     }
@@ -1248,7 +1269,13 @@ window.toggleActive = function(playerId) {
     }
 
     window.clearStorage = function() {
+
+      if (currentRoomId) {
+    leaveRoom(); // ⭐ 先斷開同步
+  }
+      
       localStorage.clear();
+      
       players = [];
       rounds = [];
       multiplier = 100;
@@ -1305,7 +1332,7 @@ function createPlayerCard(player, index){
 onclick="removePlayer('${player.id}')">×</button>
 
 <p>
-<label>玩家${player.playerNumber} 名稱：</label>
+<label>玩家${index + 1} 名稱：</label>
 
 <input
 id="${nameInputId}"
@@ -1381,7 +1408,7 @@ function updatePlayerCard(player,index){
   const remaining = document.getElementById(`remaining-${player.id}`);
   const label = card.querySelector("label");
 if(label){
-  label.textContent = `玩家${player.playerNumber || index+1} 名稱：`;
+  label.textContent = `玩家${index + 1} 名稱：`;
 }
 
   if(buyin) buyin.textContent = player.buyIn;
@@ -1417,20 +1444,22 @@ function renderPlayers(){
   // 更新或新增 DOM（O(n)）
   players.forEach((player,index)=>{
 
-    let card = playerDomMap.get(player.id);
+  let card = playerDomMap.get(player.id);
 
-    if(!card){
+  if(!card){
+    card = createPlayerCard(player,index);
+    container.appendChild(card);
+  }else{
+    updatePlayerCard(player,index);
+  }
 
-      card = createPlayerCard(player,index);
-      container.appendChild(card);
+});
 
-    }else{
-
-      updatePlayerCard(player,index);
-
-    }
-
-  });
+// ⭐ ⭐ ⭐ 這段要在外面（只執行一次）
+players.forEach(p => {
+  const card = playerDomMap.get(p.id);
+  if (card) container.appendChild(card);
+});
 
 }
     function renderRoundSummary() {
