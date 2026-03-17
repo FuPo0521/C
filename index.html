@@ -473,6 +473,7 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
     let applyingRemote = false;
 
     const playerWriteTimers = new Map();
+    const pendingLocalUpdates = new Map(); // playerId → timestamp
 
     const roomLabelEl = document.getElementById('roomLabel');
     const syncStatusEl = document.getElementById('syncStatus');
@@ -664,6 +665,8 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
       if (!currentRoomId) return;
       if (applyingRemote) return;
 
+      pendingLocalUpdates.set(playerId, Date.now());
+
       const key = playerId;
       const prev = playerWriteTimers.get(key);
       if (prev && prev.pending) Object.assign(prev.pending, patch);
@@ -678,10 +681,12 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           const toWrite = state.pending || {};
           state.pending = {};
           await updateDoc(playerRef(currentRoomId, playerId), Object.assign({}, toWrite, { updatedAt: serverTimestamp() }));
+          pendingLocalUpdates.delete(playerId);
           setStatus(isLocked() ? `輸入中（${currentRoomId}）` : `已同步（${currentRoomId}）`);
         }catch(e){
           console.error(e);
           setStatus(`同步失敗（${currentRoomId}）`);
+          pendingLocalUpdates.delete(playerId);
         }
       }, 500);
     }
@@ -770,9 +775,19 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
         remotePlayers.sort((a,b)=>{
   return getTime(a.createdAt) - getTime(b.createdAt);
 });
+        const mergedPlayers = remotePlayers.map(rp => {
+  const lastLocal = pendingLocalUpdates.get(rp.id);
+
+  if (lastLocal && Date.now() - lastLocal < 1000) {
+    const local = players.find(p => p.id === rp.id);
+    return local || rp;
+  }
+
+  return rp; // ⭐⭐⭐ 你缺這行
+});
 
         if (isLocked()) {
-          pendingPlayers = remotePlayers;
+          pendingPlayers = mergedPlayers;
           pendingNeedsFullRender = true;
           setStatus(`收到更新（待套用 ${roomId}）`);
           return;
@@ -780,7 +795,7 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
 
         applyingRemote = true;
         try{
-          players = remotePlayers;
+          players = mergedPlayers;
           saveToStorage();
         } finally {
           applyingRemote = false;
