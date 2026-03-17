@@ -398,9 +398,14 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
     </p>
   </div>
 
+    <h3>金額計算</h3>
+  
   <div class="expense-summary">
+    <div class="settlement-box" style="margin-top:20px;">
+  <button onclick="calculateSettlement()">結算</button>
 
-  <h3>金額計算</h3>
+  <div id="settlementResult" style="margin-top:12px;"></div>
+</div>
 
   <div class="table-scroll">
     <table id="expenseTable">
@@ -1015,7 +1020,7 @@ ${url}`;
  const player = {
   id: uid(),
   playerNumber: players.length ? Math.max(...players.map(p => p.playerNumber || 0)) + 1 : 1,
-    name: '',
+    name: window.lastPlayerName || '',
     buyIn: buyInAmount,
     tokens: 1,
     remainingInput: '',
@@ -1139,9 +1144,18 @@ window.updateName = function(playerId, value) {
   if(index === -1) return;
 
   const p = players[index];
-      p.name = value;
-      saveToStorage();
+  p.name = value;
 
+  // ⭐ 記住最後輸入名稱
+  window.lastPlayerName = value;
+  localStorage.setItem('lastPlayerName', value);
+
+  saveToStorage();
+
+  pendingNeedsFullRender = true;
+
+  if (currentRoomId) scheduleWritePlayer(p.id, { name: p.name });
+};
       // 名字變更在硬鎖期間不重繪 players/expense/round 表格，避免抖動
       pendingNeedsFullRender = true;
 
@@ -1617,6 +1631,104 @@ function renderPlayers(){
       roomInputEl.value = roomId;
       window.joinRoom();
     })();
+    // ============================
+// 💰 最少轉帳演算法
+// ============================
+    window.calculateSettlement = function(){
+
+  let balances = players.map((p,index) => {
+    const totalProfit = (p.roundProfits || []).reduce((a,b)=>a+b,0);
+    const es = p.expensesAutoSign || { dinner:0, drink:0, other:0 };
+    const expense = (es.dinner||0)+(es.drink||0)+(es.other||0);
+
+    const final = Number((totalProfit + expense).toFixed(0));
+
+    return {
+      name: p.name || `玩家${index+1}`,
+      amount: final
+    };
+  });
+
+  // ⭐ 過濾 0
+  balances = balances.filter(p => p.amount !== 0);
+
+  let creditors = balances.filter(p => p.amount > 0);
+  let debtors = balances.filter(p => p.amount < 0);
+
+  creditors.sort((a,b)=>b.amount-a.amount);
+  debtors.sort((a,b)=>a.amount-b.amount);
+
+  let transactions = [];
+
+  let i=0, j=0;
+
+  while(i < debtors.length && j < creditors.length){
+
+    let debtor = debtors[i];
+    let creditor = creditors[j];
+
+    let pay = Math.min(-debtor.amount, creditor.amount);
+
+    transactions.push({
+      from: debtor.name,
+      to: creditor.name,
+      amount: pay
+    });
+
+    debtor.amount += pay;
+    creditor.amount -= pay;
+
+    if(debtor.amount === 0) i++;
+    if(creditor.amount === 0) j++;
+  }
+
+  renderSettlement(transactions);
+};
+
+// ============================
+// 📊 顯示結果
+// ============================
+function renderSettlement(transactions){
+
+  const container = document.getElementById('settlementResult');
+
+  if(!transactions.length){
+    container.innerHTML = `<p>✔ 已完全平帳</p>`;
+    return;
+  }
+
+  let html = `<div style="background:#fff;border:1px solid #e4e8f0;padding:12px;border-radius:12px;">`;
+
+  transactions.forEach(t=>{
+    html += `
+      <div style="padding:6px 0;font-weight:600;">
+        ${t.from} ➜ ${t.to} ：${t.amount}
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+
+  html += `<button style="margin-top:10px;" onclick="copySettlement()">複製結果</button>`;
+
+  container.innerHTML = html;
+
+  window.__lastSettlementText = transactions.map(t =>
+    `${t.from} → ${t.to} : ${t.amount}`
+  ).join('\n');
+}
+
+// ============================
+// 📋 複製功能
+// ============================
+window.copySettlement = function(){
+
+  if(!window.__lastSettlementText) return;
+
+  navigator.clipboard.writeText(window.__lastSettlementText);
+
+  alert("已複製結算結果");
+};
   </script>
 </body>
 </html>
