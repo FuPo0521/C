@@ -833,6 +833,9 @@ remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
 
         startListeners(roomId);
         setStatus(`已同步（${roomId}）`);
+        setTimeout(() => {
+        shareRoom(roomId);
+        }, 100);
       }catch(e){
         console.error(e);
         setStatus(`建立失敗（${roomId}）`);
@@ -889,6 +892,22 @@ remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
 
       setStatus('本地模式（localStorage）');
     };
+
+    function shareRoom(roomId){
+  const baseUrl = location.origin + location.pathname.replace(/index\.html$/, "");
+  const url = baseUrl + "?room=" + roomId;
+
+  if (navigator.share) {
+    navigator.share({
+      title: '德州撲克房間',
+      text: `房間代碼：${roomId}，點擊加入`,
+      url: url
+    }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(url);
+    alert("已複製房間連結（請貼到LINE）");
+  }
+}
 
     // ========= 核心計算 =========
     function formatProfit(profit) {
