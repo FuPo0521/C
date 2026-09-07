@@ -1224,7 +1224,14 @@ window.toggleActive = function(playerId) {
     }
 
     window.clearStorage = function() {
-      localStorage.clear();
+      
+      if (currentRoomId) {
+    window.leaveRoom();
+  }
+      
+     localStorage.clear();
+      
+      
       players = [];
       rounds = [];
       multiplier = 100;
@@ -1328,6 +1335,15 @@ ${formatProfit(player.profit)}
 </span>
 </p>
 `;
+  
+if ((player.roundProfits || []).length > 0) {
+  const removeButton = div.querySelector('.remove-button');
+
+  if (removeButton) {
+    removeButton.remove();
+  }
+}  
+  
   playerDomMap.set(player.id, div);
 
   return div;
