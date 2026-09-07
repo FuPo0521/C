@@ -39,10 +39,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
 
   *{ box-sizing:border-box; }
 
-    html, body {
-  touch-action: manipulation;
-}
-
   body{
     margin:0;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", "Microsoft JhengHei", sans-serif;
@@ -477,7 +473,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
     let applyingRemote = false;
 
     const playerWriteTimers = new Map();
-    const pendingLocalUpdates = new Map(); // playerId → timestamp
 
     const roomLabelEl = document.getElementById('roomLabel');
     const syncStatusEl = document.getElementById('syncStatus');
@@ -621,7 +616,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
       players = players.map(p => {
         const np = Object.assign({
           id: uid(),
-          createdAt: Date.now(),
           name: '',
           buyIn: buyInAmount,
           tokens: 1,
@@ -631,10 +625,12 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           roundProfits: [],
           buyInCounts: [],
           active: true,
+          playerNumber: 0,
           expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
         }, p);
 
         if (!np.id) np.id = uid();
+        if (!np.playerNumber) np.playerNumber = players.indexOf(p) + 1;
         if (!Array.isArray(np.roundProfits)) np.roundProfits = [];
         if (!Array.isArray(np.buyInCounts)) np.buyInCounts = [];
         if (!np.expensesAutoSign || typeof np.expensesAutoSign !== 'object') {
@@ -669,8 +665,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
       if (!currentRoomId) return;
       if (applyingRemote) return;
 
-      pendingLocalUpdates.set(playerId, Date.now());
-
       const key = playerId;
       const prev = playerWriteTimers.get(key);
       if (prev && prev.pending) Object.assign(prev.pending, patch);
@@ -685,14 +679,12 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           const toWrite = state.pending || {};
           state.pending = {};
           await updateDoc(playerRef(currentRoomId, playerId), Object.assign({}, toWrite, { updatedAt: serverTimestamp() }));
-          pendingLocalUpdates.delete(playerId);
           setStatus(isLocked() ? `輸入中（${currentRoomId}）` : `已同步（${currentRoomId}）`);
         }catch(e){
           console.error(e);
           setStatus(`同步失敗（${currentRoomId}）`);
-          pendingLocalUpdates.delete(playerId);
         }
-      }, 500);
+      }, 250);
     }
 
     async function writeRoomSettingsNow(){
@@ -713,12 +705,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
     }
 
     // ========= 同步：監聽（硬鎖版：輸入中只暫存，不重繪） =========
-    function getTime(t){
-  if (!t) return 0;
-  if (typeof t === 'number') return t;
-  if (t.seconds) return t.seconds * 1000;
-  return 0;
-}
     function startListeners(roomId){
       if (unsubRoomDoc) unsubRoomDoc();
       if (unsubPlayers) unsubPlayers();
@@ -775,23 +761,12 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
             expensesAutoSign: { dinner: 0, drink: 0, other: 0 }
           }, p, { id: d.id }));
         });
-
-        remotePlayers.sort((a,b)=>{
-  return getTime(a.createdAt) - getTime(b.createdAt);
-});
-        const mergedPlayers = remotePlayers.map(rp => {
-  const lastLocal = pendingLocalUpdates.get(rp.id);
-
-  if (lastLocal && Date.now() - lastLocal < 1200) {
-    const local = players.find(p => p.id === rp.id);
-    return local || rp;
-  }
-
-  return rp; // ⭐⭐⭐ 你缺這行
-});
+        
+        // ⭐ 加這一行
+remotePlayers.sort((a,b)=> (a.playerNumber||0)-(b.playerNumber||0));
 
         if (isLocked()) {
-          pendingPlayers = mergedPlayers;
+          pendingPlayers = remotePlayers;
           pendingNeedsFullRender = true;
           setStatus(`收到更新（待套用 ${roomId}）`);
           return;
@@ -799,15 +774,13 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
 
         applyingRemote = true;
         try{
-          players = mergedPlayers;
+          players = remotePlayers;
           saveToStorage();
         } finally {
           applyingRemote = false;
         }
 
-        if (!isLocked()) {
-  fullRenderNow();
-}
+        fullRenderNow();
         setStatus(`已同步（${roomId}）`);
       });
 
@@ -846,15 +819,9 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
         await ensureRoomDoc(roomId);
 
         for (const p of players) {
-  await setDoc(
-    playerRef(roomId, p.id),
-    Object.assign({}, p, {
-      createdAt: p.createdAt ?? serverTimestamp(), // ⭐ 加這個
-      updatedAt: serverTimestamp()
-    }),
-    { merge: true }
-  );
-}
+          if (!p.id) p.id = uid();
+          await setDoc(playerRef(roomId, p.id), Object.assign({}, p, { updatedAt: serverTimestamp() }), { merge: true });
+        }
 
         for (const r of rounds) {
           await addDoc(roundsCol(roomId), Object.assign({}, r, { createdAt: serverTimestamp() }));
@@ -866,9 +833,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
 
         startListeners(roomId);
         setStatus(`已同步（${roomId}）`);
-        setTimeout(() => {
-        shareRoom(roomId);
-        }, 100);
       }catch(e){
         console.error(e);
         setStatus(`建立失敗（${roomId}）`);
@@ -891,15 +855,9 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
           await ensureRoomDoc(roomId);
 
           for (const p of players) {
-  await setDoc(
-    playerRef(roomId, p.id),
-    Object.assign({}, p, {
-      createdAt: p.createdAt ?? serverTimestamp(), // ⭐ 加這個
-      updatedAt: serverTimestamp()
-    }),
-    { merge: true }
-  );
-}
+            if (!p.id) p.id = uid();
+            await setDoc(playerRef(roomId, p.id), Object.assign({}, p, { updatedAt: serverTimestamp() }), { merge: true });
+          }
 
           for (const r of rounds) {
             await addDoc(roundsCol(roomId), Object.assign({}, r, { createdAt: serverTimestamp() }));
@@ -931,27 +889,6 @@ content="width=device-width, initial-scale=1, maximum-scale=1">
 
       setStatus('本地模式（localStorage）');
     };
-
-    function shareRoom(roomId){
-  const baseUrl = location.origin + location.pathname.replace(/index\.html$/, "");
-  const url = baseUrl + "?room=" + roomId;
-
-  const shareText = `🎲 德州撲克房間
-房號：${roomId}
-👉 點這裡加入：
-${url}`;
-
-  if (navigator.share) {
-    navigator.share({
-      title: '德州撲克房間',
-      text: shareText,
-      url: url // 可留可不留
-    }).catch(() => {});
-  } else {
-    navigator.clipboard.writeText(url);
-    alert("已複製房間連結（請貼到LINE）");
-  }
-}
 
     // ========= 核心計算 =========
     function formatProfit(profit) {
@@ -1053,7 +990,7 @@ ${url}`;
 
  const player = {
   id: uid(),
-   createdAt: Date.now(),
+  playerNumber: players.length ? Math.max(...players.map(p => p.playerNumber || 0)) + 1 : 1,
     name: '',
     buyIn: buyInAmount,
     tokens: 1,
@@ -1070,18 +1007,15 @@ ${url}`;
 
   saveToStorage();
 
-  fullRenderNow();
+  requestFullRender();
 
   if (currentRoomId) {
     try{
       await setDoc(
-  playerRef(currentRoomId, player.id),
-  Object.assign({}, player, {
-    createdAt: player.createdAt ?? serverTimestamp(), // ⭐ 防覆蓋
-    updatedAt: serverTimestamp()
-  }),
-  { merge: true }
-);
+        playerRef(currentRoomId, player.id),
+        Object.assign({}, player, { updatedAt: serverTimestamp() }),
+        { merge: true }
+      );
     }catch(e){
       console.error(e);
     }
@@ -1124,17 +1058,7 @@ if(card){
   saveToStorage();
 
   // 更新 UI
-  const card = playerDomMap.get(p.id);
-
-if (card) {
-  updatePlayerCard(p, index);
-} else {
-  fullRenderNow(); // fallback（保險）
-}
-
-updateSummary();
-recalcExpenseSummary();
-updateGrandTotal();
+  requestFullRender();
 
   if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
 };
@@ -1156,17 +1080,7 @@ window.decreaseBuyIn = function(playerId) {
     saveToStorage();
 
     // 更新 UI
-    const card = playerDomMap.get(p.id);
-
-if (card) {
-  updatePlayerCard(p, index);
-} else {
-  fullRenderNow(); // fallback（保險）
-}
-
-updateSummary();
-recalcExpenseSummary();
-updateGrandTotal();
+    requestFullRender();
 
     if (currentRoomId) scheduleWritePlayer(p.id, { buyIn: p.buyIn, tokens: p.tokens });
 
@@ -1188,11 +1102,9 @@ window.updateRemaining = function(playerId, value) {
       updateProfit(index);
       saveToStorage();
 
-      if (!isLocked()) {
-  updateSummary();
-  recalcExpenseSummary();
-  updateGrandTotal();
-}
+      updateSummary();
+      recalcExpenseSummary();
+      updateGrandTotal();
 
       if (currentRoomId) scheduleWritePlayer(p.id, { remainingInput: p.remainingInput, remaining: p.remaining, profit: p.profit });
     };
@@ -1235,7 +1147,7 @@ window.toggleActive = function(playerId) {
       }
 
       saveToStorage();
-      fullRenderNow();
+      requestFullRender();
 
       if (currentRoomId) scheduleWritePlayer(p.id, {
         active: p.active,
@@ -1312,13 +1224,7 @@ window.toggleActive = function(playerId) {
     }
 
     window.clearStorage = function() {
-
-      if (currentRoomId) {
-    leaveRoom(); // ⭐ 先斷開同步
-  }
-      
       localStorage.clear();
-      
       players = [];
       rounds = [];
       multiplier = 100;
@@ -1375,7 +1281,7 @@ function createPlayerCard(player, index){
 onclick="removePlayer('${player.id}')">×</button>
 
 <p>
-<label>玩家${index + 1} 名稱：</label>
+<label>玩家${player.playerNumber} 名稱：</label>
 
 <input
 id="${nameInputId}"
@@ -1422,7 +1328,6 @@ ${formatProfit(player.profit)}
 </span>
 </p>
 `;
-
   playerDomMap.set(player.id, div);
 
   return div;
@@ -1444,6 +1349,12 @@ function updatePlayerCard(player,index){
       player.active ? '標記退場' : '標記復出';
   }
 
+const removeButton = card.querySelector('.remove-button');
+
+if ((player.roundProfits || []).length > 0 && removeButton) {
+  removeButton.remove();
+}
+
   const buyin = document.getElementById(`buyin-${player.id}`);
   const tokens = document.getElementById(`tokens-${player.id}`);
   const profit = document.getElementById(`profit-${player.id}`);
@@ -1451,25 +1362,20 @@ function updatePlayerCard(player,index){
   const remaining = document.getElementById(`remaining-${player.id}`);
   const label = card.querySelector("label");
 if(label){
-  label.textContent = `玩家${index + 1} 名稱：`;
+  label.textContent = `玩家${player.playerNumber || index+1} 名稱：`;
 }
 
   if(buyin) buyin.textContent = player.buyIn;
   if(tokens) tokens.textContent = player.tokens;
   if(profit) profit.textContent = formatProfit(player.profit);
 
-  if (name && name !== document.activeElement) {
-  if (name.value !== player.name) {
+  if(name && name.value !== player.name){
     name.value = player.name || '';
   }
-}
 
-  if (remaining && remaining !== document.activeElement) {
-  if (remaining.value !== player.remainingInput) {
+  if(remaining && remaining.value !== player.remainingInput){
     remaining.value = player.remainingInput || '';
   }
-}
-
 }
 
 
@@ -1492,24 +1398,20 @@ function renderPlayers(){
   // 更新或新增 DOM（O(n)）
   players.forEach((player,index)=>{
 
-  let card = playerDomMap.get(player.id);
+    let card = playerDomMap.get(player.id);
 
-  if(!card){
-    card = createPlayerCard(player,index);
-    container.appendChild(card);
-  }else{
-    updatePlayerCard(player,index);
-  }
+    if(!card){
 
-});
+      card = createPlayerCard(player,index);
+      container.appendChild(card);
 
-// ⭐ ⭐ ⭐ 這段要在外面（只執行一次）
-players.forEach((p, i) => {
-  const card = playerDomMap.get(p.id);
-  if (card && container.children[i] !== card) {
-    container.appendChild(card);
-  }
-});
+    }else{
+
+      updatePlayerCard(player,index);
+
+    }
+
+  });
 
 }
     function renderRoundSummary() {
@@ -1534,10 +1436,6 @@ players.forEach((p, i) => {
     }
 
     function renderExpenseTable() {
-      if (isLocked()) {
-  recalcExpenseSummary();
-  return;
-}
       const table = document.getElementById('expenseTable');
       if (!table) return;
 
